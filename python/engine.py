@@ -21,9 +21,15 @@ def fetch_prices(ticker=TICKER):
         return generate_synthetic_prices()
     try:
         data = yf.download(ticker, period="1y", interval="1d", progress=False)
-        if data.empty or len(data) < SLOW_MA:
+        if data.empty:
             return generate_synthetic_prices()
-        return data["Close"].tolist()
+        close = data["Close"]
+        if hasattr(close, "droplevel"):
+            close = close.droplevel("Ticker", axis=1) if close.columns.nlevels > 1 else close
+        prices = close.tolist()
+        if len(prices) < 10:
+            return generate_synthetic_prices()
+        return prices
     except Exception:
         return generate_synthetic_prices()
 

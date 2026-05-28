@@ -6,7 +6,10 @@ local stdout_buf = ""
 function M.spawn(script_path, on_line, on_exit)
   stdout_buf = ""
 
-  local cmd = { "python3", script_path }
+  local plugin_root = vim.fn.fnamemodify(script_path, ":h:h")
+  local venv_python = plugin_root .. "/.venv/bin/python3"
+  local python_cmd = vim.fn.executable(venv_python) == 1 and venv_python or "python3"
+  local cmd = { python_cmd, script_path }
 
   job = vim.system(cmd, {
     stdout = true,
