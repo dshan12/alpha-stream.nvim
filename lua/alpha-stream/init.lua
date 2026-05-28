@@ -15,7 +15,18 @@ function M.start()
 
   running = true
   ui.open()
-  ui.update_dashboard({ progress = 0, pnl = 0, drawdown = 0, status = "starting" })
+  ui.update_dashboard({
+    progress = 0,
+    pnl = 0,
+    drawdown = 0,
+    portfolio = 10000,
+    price = 0,
+    fast_ma = nil,
+    slow_ma = nil,
+    position = "flat",
+    sparkline = "",
+    status = "starting",
+  })
 
   local script = vim.fn.fnamemodify(engine_path .. "../../python/engine.py", ":p")
 
@@ -24,6 +35,7 @@ function M.start()
   end, function(exit_code)
     running = false
     if exit_code ~= 0 then
+      ui.show_error("Process exited with code " .. exit_code)
       vim.notify("alpha-stream: process exited with code " .. exit_code, vim.log.levels.ERROR)
     end
   end)
