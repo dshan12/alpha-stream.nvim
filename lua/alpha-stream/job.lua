@@ -2,6 +2,7 @@ local M = {}
 
 local job = nil
 local stdout_buf = ""
+local timer = nil
 
 function M.spawn(script_path, on_line, on_exit)
   stdout_buf = ""
@@ -14,11 +15,11 @@ function M.spawn(script_path, on_line, on_exit)
   job = vim.system(cmd, {
     stdout = true,
     stderr = true,
-  }, function(exit_code)
+  }, function(result)
     job = nil
     if on_exit then
       vim.schedule(function()
-        on_exit(exit_code)
+        on_exit(result)
       end)
     end
   end)
@@ -57,7 +58,7 @@ function M.spawn(script_path, on_line, on_exit)
   end
 
   local uv = vim.uv or vim.loop
-  local timer = uv.new_timer()
+  timer = uv.new_timer()
   timer:start(10, 50, function()
     vim.schedule(function()
       if job then
@@ -71,6 +72,11 @@ function M.spawn(script_path, on_line, on_exit)
 end
 
 function M.stop()
+  if timer then
+    timer:stop()
+    timer:close()
+    timer = nil
+  end
   if job then
     job:kill("sigterm")
     job = nil

@@ -32,11 +32,12 @@ function M.start()
 
   job.spawn(script, function(data)
     ui.update_dashboard(data)
-  end, function(exit_code)
+  end, function(result)
     running = false
-    if exit_code ~= 0 then
-      ui.show_error("Process exited with code " .. exit_code)
-      vim.notify("alpha-stream: process exited with code " .. exit_code, vim.log.levels.ERROR)
+    local code = result and result.code or -1
+    if code ~= 0 then
+      ui.show_error("Process exited with code " .. code)
+      vim.notify("alpha-stream: process exited with code " .. code, vim.log.levels.ERROR)
     end
   end)
 end
