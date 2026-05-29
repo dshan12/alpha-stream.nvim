@@ -67,7 +67,7 @@ python3 -m venv .venv
 2. **Try a different strategy**: `:AlphaStreamRun SPY mean_reversion`
 3. **Tweak parameters**: `:AlphaStreamRun SPY mean_reversion 20 100`
 4. **Compare results**: `:AlphaStreamLog` (opens quickfix with all runs)
-5. **Write your own**: create `~/strategies/my_strat.py`, then `:AlphaStreamRun SPY ~/strategies/my_strat.py 50 200`
+5. **Write your own**: create `./strategies/my_strat.py`, then `:AlphaStreamRun SPY ./strategies/my_strat.py 50 200`
 6. **Iterate**: edit the `.py` file, press `r` in the dashboard, no Neovim restart needed
 
 Each run is saved to `~/.local/share/nvim/alpha-stream/results.jsonl` with timestamp, ticker, params, and final metrics.
@@ -93,7 +93,7 @@ Each run is saved to `~/.local/share/nvim/alpha-stream/results.jsonl` with times
 A strategy is a Python file with a `run_bar(bar)` function:
 
 ```python
-# ~/my_strategies/momentum.py
+# ./strategies/momentum.py
 def run_bar(bar):
     price = bar["price"]
     prices = bar["prices"]
@@ -122,7 +122,7 @@ The `bar` dict has everything you need:
 Use it with an absolute path:
 
 ```vim
-:AlphaStreamRun SPY ~/my_strategies/momentum.py
+:AlphaStreamRun SPY ./strategies/momentum.py
 ```
 
 Strategies can also export `get_params()` returning a dict of config values
