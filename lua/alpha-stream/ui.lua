@@ -5,8 +5,9 @@ local win = nil
 local ns = vim.api.nvim_create_namespace("alpha-stream")
 local restart_cb = nil
 local pnl_ticks = {}
+local dd_ticks = {}
 
-local W = 60
+local W = 86
 local CW = W - 2
 
 local function format_num(n)
@@ -26,14 +27,31 @@ local function format_num(n)
   return (neg and "-" or "") .. table.concat(parts, ",") .. "." .. dec_part
 end
 
-local CHART_H = 6
+local function compute_sharpe(ticks)
+  if #ticks < 3 then return 0 end
+  local returns = {}
+  for i = 2, #ticks do
+    table.insert(returns, ticks[i] - ticks[i - 1])
+  end
+  local sum = 0
+  for _, v in ipairs(returns) do sum = sum + v end
+  local mean = sum / #returns
+  local variance = 0
+  for _, v in ipairs(returns) do
+    variance = variance + (v - mean) ^ 2
+  end
+  variance = variance / (#returns - 1)
+  local std = math.sqrt(variance)
+  if std == 0 then return 0 end
+  return math.floor(mean / std * 100) / 100
+end
 
-local function render_equity_curve(values, chart_width)
+local function render_chart(values, chart_w, chart_h)
   local rows = {}
-  for i = 1, CHART_H do rows[i] = "" end
-  if not values or #values == 0 then return rows end
+  for i = 1, chart_h do rows[i] = "" end
+  if not values or #values < 2 then return rows end
 
-  local n = math.min(#values, chart_width)
+  local n = math.min(#values, chart_w)
   local start = #values - n + 1
 
   local mn = values[start]
@@ -48,12 +66,74 @@ local function render_equity_curve(values, chart_width)
   local partials = { "▁", "▂", "▃", "▄" }
 
   for i = start, #values do
-    local raw = (values[i] - mn) / rng * (CHART_H * 4)
+    local raw = (values[i] - mn) / rng * (chart_h * 4)
     local row = math.floor(raw / 4)
     local sub = raw % 4
 
-    for r = 0, CHART_H - 1 do
-      local idx = CHART_H - r
+    for r = 0, chart_h - 1 do
+      local idx = chart_h - r
+      if r < row then
+        rows[idx] = rows[idx] .. "█"
+      elseif r == row then
+        if sub >= 3 then
+          rows[idx] = rows[idx] .. "█"
+        else
+          rows[idx] = rows[idx] .. partials[math.floor(sub) + 1]
+        end
+      else
+        rows[idx] = rows[idx] .. " "
+      end
+    end
+  end
+
+  return rows
+end
+
+local partials = { "▁", "▂", "▃", "▄" }
+
+local function render_sharpe_chart(ticks, chart_w, chart_h)
+  local rows = {}
+  for i = 1, chart_h do rows[i] = "" end
+  if #ticks < 22 then return rows end
+
+  local window = 20
+  local sharpe_vals = {}
+  for i = window + 1, #ticks do
+    local s = 0
+    for j = i - window + 1, i do
+      s = s + ticks[j] - ticks[j - 1]
+    end
+    local mean = s / window
+    local v = 0
+    for j = i - window + 1, i do
+      v = v + (ticks[j] - ticks[j - 1] - mean) ^ 2
+    end
+    v = v / (window - 1)
+    local std = math.sqrt(v)
+    table.insert(sharpe_vals, std > 0 and mean / std or 0)
+  end
+
+  if #sharpe_vals < 2 then return rows end
+
+  local n = math.min(#sharpe_vals, chart_w)
+  local start = #sharpe_vals - n + 1
+
+  local mn = sharpe_vals[start]
+  local mx = sharpe_vals[start]
+  for i = start, #sharpe_vals do
+    if sharpe_vals[i] < mn then mn = sharpe_vals[i] end
+    if sharpe_vals[i] > mx then mx = sharpe_vals[i] end
+  end
+  local rng = mx - mn
+  if rng == 0 then rng = 1 end
+
+  for i = start, #sharpe_vals do
+    local raw = (sharpe_vals[i] - mn) / rng * (chart_h * 4)
+    local row = math.floor(raw / 4)
+    local sub = raw % 4
+
+    for r = 0, chart_h - 1 do
+      local idx = chart_h - r
       if r < row then
         rows[idx] = rows[idx] .. "█"
       elseif r == row then
@@ -85,7 +165,7 @@ function M.open()
   if not ui_state then return end
 
   buf = vim.api.nvim_create_buf(false, true)
-  local height = 25
+  local height = 30
   local row = math.floor((ui_state.height - height) / 2)
   local col = math.floor((ui_state.width - W) / 2)
 
@@ -130,112 +210,115 @@ function M.update_dashboard(data)
     vim.wo[win].winhighlight = "Normal:Normal"
   end
 
-  local function make_line(label, val)
-    return string.format("  %-12s %" .. tostring(CW - 15) .. "s", label, val)
+  if type(data.pnl) == "number" then
+    table.insert(pnl_ticks, data.pnl)
   end
+  if type(data.drawdown) == "number" then
+    table.insert(dd_ticks, data.drawdown)
+  end
+
+  local sep = "  " .. string.rep("─", CW - 2) .. "  "
 
   local pnl_sign = pnl >= 0 and "+" or ""
   local pnl_str = pnl_sign .. "$" .. format_num(math.abs(pnl))
-  local port_str = type(data.portfolio) == "number" and "$" .. format_num(data.portfolio) or "N/A"
   local dd_str = format_num(data.drawdown) .. "%"
+  local port_str = type(data.portfolio) == "number" and "$" .. format_num(data.portfolio) or "N/A"
   local price_str = type(data.price) == "number" and "$" .. format_num(data.price) or "N/A"
   local fast_str = type(data.fast_ma) == "number" and "$" .. format_num(data.fast_ma) or "---"
   local slow_str = type(data.slow_ma) == "number" and "$" .. format_num(data.slow_ma) or "---"
   local pos_str = data.position == "long" and "LONG" or "FLAT"
+  local sharpe_str = format_num(compute_sharpe(pnl_ticks))
 
   local progress = data.progress or 0
   local total = data.total or 100
-  local bar_len = 20
-  local filled = math.floor(progress / total * bar_len)
-  local bar = string.rep("█", filled) .. string.rep("░", bar_len - filled)
+  local bar_len = 16
+  local bar = string.rep("█", math.floor(progress / total * bar_len)) .. string.rep("░", bar_len - math.floor(progress / total * bar_len))
   local progress_str = string.format("[%s] %d/%d", bar, progress, total)
 
-  if type(data.pnl) == "number" then
-    table.insert(pnl_ticks, data.pnl)
-  end
-  local curve = render_equity_curve(pnl_ticks, CW - 2)
-  local curve_color = pnl >= 0 and "DiagnosticOk" or "DiagnosticError"
+  local eq_h = 7
+  local sub_h = 7
+  local sub_w = math.floor((CW - 4) / 2)
 
-  local hdr1 = "  ╔" .. string.rep("═", W - 6) .. "╗"
-  local hdr2 = "  ║  α-stream — Real-time Backtest" .. string.rep(" ", W - 6 - 30 - 4) .. "║"
-  local hdr3 = "  ╚" .. string.rep("═", W - 6) .. "╝"
+  local eq_curve = render_chart(pnl_ticks, CW - 4, eq_h)
+  local dd_curve = render_chart(dd_ticks, sub_w, sub_h)
+  local sr_curve = render_sharpe_chart(pnl_ticks, sub_w, sub_h)
+
+  local eq_color = pnl >= 0 and "DiagnosticOk" or "DiagnosticError"
+  local dd_color = (data.drawdown or 0) <= 0 and "DiagnosticOk" or "DiagnosticError"
+  local sr_color = compute_sharpe(pnl_ticks) >= 0 and "DiagnosticOk" or "DiagnosticError"
 
   local lines = {
-    hdr1,
-    hdr2,
-    hdr3,
-    "",
-    make_line("PnL:", pnl_str),
-    make_line("Drawdown:", dd_str),
-    make_line("Portfolio:", port_str),
-    "",
-    make_line("Price:", price_str),
-    make_line("Fast MA:", fast_str),
-    make_line("Slow MA:", slow_str),
-    make_line("Position:", pos_str),
-    "",
     "  " .. progress_str,
+    sep,
+    string.format("  %-13s %s     %-13s %s", "PnL:", pnl_str, "Drawdown:", dd_str),
+    string.format("  %-13s %s     %-13s %s", "Portfolio:", port_str, "Price:", price_str),
+    string.format("  %-13s %s     %-13s %s", "Fast MA:", fast_str, "Slow MA:", slow_str),
+    string.format("  %-13s %s     %-13s %s", "Position:", pos_str, "Sharpe:", sharpe_str),
+    sep,
+    "  " .. "Equity Curve",
   }
 
-  for _, row in ipairs(curve) do
-    table.insert(lines, "  " .. row)
+  for _, row in ipairs(eq_curve) do
+    table.insert(lines, "   " .. row)
+  end
+
+  table.insert(lines, sep)
+
+  local hdr_dd = "  Drawdown" .. string.rep(" ", sub_w - 8) .. "│   "
+  local hdr_sr = "Rolling Sharpe"
+  local hdr_pad = sub_w * 2 + 2 - #hdr_dd - #hdr_sr
+  table.insert(lines, hdr_dd .. hdr_sr .. string.rep(" ", hdr_pad))
+
+  for r = 1, sub_h do
+    local dd_row = dd_curve[r] or ""
+    local sr_row = sr_curve[r] or ""
+    local dd_pad = sub_w - #dd_row
+    local sr_pad = sub_w - #sr_row
+    table.insert(lines, "  " .. dd_row .. string.rep(" ", dd_pad) .. " │  " .. sr_row .. string.rep(" ", sr_pad))
   end
 
   if is_done then
-    local bw = CW - 4
-    local banner_inner = "    Backtest Complete!  "
-    local banner_val = "Final: " .. pnl_str
-    local pad = bw - #banner_inner - #banner_val
-    table.insert(lines, "  │" .. banner_inner .. banner_val .. string.rep(" ", pad) .. "│")
-    table.insert(lines, "  ├" .. string.rep("─", bw) .. "┤")
-    local hint_str = "  Press  q  close  ·  r  restart  "
-    table.insert(lines, "  │" .. hint_str .. string.rep(" ", bw - #hint_str) .. "│")
-    table.insert(lines, "  └" .. string.rep("─", bw) .. "┘")
-  else
-    table.insert(lines, "")
-    local hint_str = "  Press  q  close  ·  r  restart"
-    table.insert(lines, hint_str .. string.rep(" ", CW - #hint_str))
+    table.insert(lines, sep)
+    table.insert(lines, "  │  Backtest Complete!  Final: " .. pnl_str .. string.rep(" ", CW - 34 - #pnl_str) .. "│")
+    table.insert(lines, "  └" .. string.rep("─", CW - 2) .. "┘  ")
   end
+
+  local hint_line = #lines + 1
+  table.insert(lines, "  Press  q  close  ·  r  restart" .. string.rep(" ", CW - 38))
 
   pcall(vim.api.nvim_win_set_config, win, { height = #lines })
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 
-  local curve_start = 14
-  local hint_line = curve_start + CHART_H + 1
+  local hl_lines = {
+    { 0, "Special", 2, -1 },
+    { 2, "Comment", 2, 15 }, { 2, "Comment", 40, 55 },
+    { 3, "Comment", 2, 15 }, { 3, "Comment", 40, 55 },
+    { 4, "Comment", 2, 15 }, { 4, "Comment", 40, 55 },
+    { 5, "Comment", 2, 15 }, { 5, "Comment", 40, 55 },
+    { 2, pnl >= 0 and "DiagnosticOk" or "DiagnosticError", 16, -1 },
+    { 2, (data.drawdown or 0) <= 0 and "DiagnosticOk" or "DiagnosticError", 56, -1 },
+    { 3, "DiagnosticOk", 16, -1 },
+    { 5, data.position == "long" and "DiagnosticOk" or "Comment", 16, -1 },
+    { 5, sr_color, 56, -1 },
+  }
 
-  local hl_lines = {}
-
-  if is_done then
-    hl_lines.header = { { 0, "Special", 0, -1 }, { 1, "Title", 0, -1 }, { 2, "Special", 0, -1 } }
-    hl_lines.labels = { { 4, "Comment", 2, 15 }, { 5, "Comment", 2, 15 }, { 6, "Comment", 2, 15 }, { 8, "Comment", 2, 15 }, { 9, "Comment", 2, 15 }, { 10, "Comment", 2, 15 }, { 11, "Comment", 2, 15 } }
-    hl_lines.pnl = { { 4, pnl >= 0 and "DiagnosticOk" or "DiagnosticError", 15, -1 } }
-    hl_lines.dd = { { 5, (data.drawdown or 0) <= 0 and "DiagnosticOk" or "DiagnosticError", 15, -1 } }
-    hl_lines.pos = { { 11, data.position == "long" and "DiagnosticOk" or "Comment", 15, -1 } }
-    hl_lines.progress = { { 13, "Special", 2, -1 } }
-    local curve_hl = {}
-    for r = 1, CHART_H do
-      table.insert(curve_hl, { r - 1 + curve_start, curve_color, 2, -1 })
-    end
-    hl_lines.curve = curve_hl
-    hl_lines.banner = { { hint_line, "DiagnosticOk", 0, -1 }, { hint_line + 1, "Comment", 0, -1 }, { hint_line + 2, "Comment", 0, -1 }, { hint_line + 3, "Special", 0, -1 } }
-  else
-    hl_lines.header = { { 0, "Special", 0, -1 }, { 1, "Title", 0, -1 }, { 2, "Special", 0, -1 } }
-    hl_lines.labels = { { 4, "Comment", 2, 15 }, { 5, "Comment", 2, 15 }, { 6, "Comment", 2, 15 }, { 8, "Comment", 2, 15 }, { 9, "Comment", 2, 15 }, { 10, "Comment", 2, 15 }, { 11, "Comment", 2, 15 } }
-    hl_lines.pnl = { { 4, pnl >= 0 and "DiagnosticOk" or "DiagnosticError", 15, -1 } }
-    hl_lines.dd = { { 5, (data.drawdown or 0) <= 0 and "DiagnosticOk" or "DiagnosticError", 15, -1 } }
-    hl_lines.pos = { { 11, data.position == "long" and "DiagnosticOk" or "Comment", 15, -1 } }
-    hl_lines.progress = { { 13, "Special", 2, -1 } }
-    local curve_hl = {}
-    for r = 1, CHART_H do
-      table.insert(curve_hl, { r - 1 + curve_start, curve_color, 2, -1 })
-    end
-    hl_lines.curve = curve_hl
-    hl_lines.hint = { { hint_line, "Comment", 0, -1 } }
+  local chart_start = 8
+  for r = 1, eq_h do
+    table.insert(hl_lines, { r - 1 + chart_start, eq_color, 2, -1 })
   end
 
-  for _, group in pairs(hl_lines) do
-    for _, hl in ipairs(group) do
-      vim.api.nvim_buf_add_highlight(buf, ns, hl[2], hl[1], hl[3], hl[4])
+  local sub_start = chart_start + eq_h + 2
+  for r = 1, sub_h do
+    table.insert(hl_lines, { r - 1 + sub_start, dd_color, 2, sub_w + 2 })
+    table.insert(hl_lines, { r - 1 + sub_start, sr_color, sub_w + 7, -1 })
+  end
+
+  local hint_idx = #lines - 1
+  table.insert(hl_lines, { hint_idx, "Comment", 0, -1 })
+
+  for _, hl in ipairs(hl_lines) do
+    if hl[1] ~= nil and hl[2] ~= nil then
+      local ok, _ = pcall(vim.api.nvim_buf_add_highlight, buf, ns, hl[2], hl[1], hl[3] or 0, hl[4] or -1)
     end
   end
 end
@@ -268,6 +351,7 @@ function M.close()
   win = nil
   buf = nil
   pnl_ticks = {}
+  dd_ticks = {}
 end
 
 return M
