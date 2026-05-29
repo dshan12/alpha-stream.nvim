@@ -4,6 +4,7 @@ local job = require("alpha-stream.job")
 local M = {}
 local running = false
 local current_ticker = "SPY"
+local current_strategy = "ma_crossover"
 local current_fast = 50
 local current_slow = 200
 
@@ -22,6 +23,7 @@ local function save_result(data)
   local entry = {
     timestamp = os.date("%Y-%m-%d %H:%M:%S"),
     ticker = current_ticker,
+    strategy = current_strategy,
     fast_ma = current_fast,
     slow_ma = current_slow,
     pnl = data.pnl,
@@ -43,6 +45,7 @@ end)
 function M.start(opts)
   opts = opts or {}
   current_ticker = opts.ticker or "SPY"
+  current_strategy = opts.strategy or "ma_crossover"
   current_fast = opts.fast_ma or 50
   current_slow = opts.slow_ma or 200
 
@@ -53,7 +56,7 @@ function M.start(opts)
 
   running = true
   ui.set_ticker(current_ticker)
-  ui.set_strategy(current_fast, current_slow)
+  ui.set_strategy(current_fast, current_slow, current_strategy)
   ui.open()
   ui.update_dashboard({
     progress = 0,
@@ -71,7 +74,7 @@ function M.start(opts)
 
   local root = get_plugin_root()
   local script = root .. "/python/engine.py"
-  local extra_args = { "--ticker", current_ticker, "--fast", tostring(current_fast), "--slow", tostring(current_slow) }
+  local extra_args = { "--ticker", current_ticker, "--strategy", current_strategy, "--fast", tostring(current_fast), "--slow", tostring(current_slow) }
 
   local ok, err = pcall(function()
     job.spawn(script, function(data)
@@ -111,7 +114,7 @@ end
 function M.restart()
   M.stop()
   vim.defer_fn(function()
-    M.start({ ticker = current_ticker, fast_ma = current_fast, slow_ma = current_slow })
+    M.start({ ticker = current_ticker, strategy = current_strategy, fast_ma = current_fast, slow_ma = current_slow })
   end, 150)
 end
 

@@ -5,6 +5,7 @@ local win = nil
 local ns = vim.api.nvim_create_namespace("alpha-stream")
 local restart_cb = nil
 local current_ticker = "SPY"
+local current_strategy = "ma_crossover"
 local current_fast = 50
 local current_slow = 200
 
@@ -46,9 +47,10 @@ function M.set_ticker(t)
   current_ticker = t or "SPY"
 end
 
-function M.set_strategy(fast, slow)
+function M.set_strategy(fast, slow, strat)
   current_fast = fast or 50
   current_slow = slow or 200
+  current_strategy = strat or "ma_crossover"
 end
 
 function M.open()
@@ -112,9 +114,10 @@ function M.update_dashboard(data)
   local fast_win = data.fast_window or current_fast
   local slow_win = data.slow_window or current_slow
 
-  local title = " α-stream: " .. current_ticker .. " MA(" .. current_fast .. "," .. current_slow .. ") "
+  local strat_label = current_strategy:gsub("_", " "):gsub("^%l", string.upper)
+  local title = " " .. current_ticker .. " · " .. strat_label .. " · MA(" .. current_fast .. "," .. current_slow .. ") "
   if is_done then
-    title = " α-stream: " .. current_ticker .. " ✓ " .. pnl_str .. " "
+    title = " " .. current_ticker .. " ✓ " .. pnl_str .. " "
   end
   pcall(vim.api.nvim_win_set_config, win, { title = title })
 
@@ -132,7 +135,7 @@ function M.update_dashboard(data)
   local bar = string.rep("█", filled) .. string.rep("░", bar_len - filled)
 
   local lines = {
-    row("Ticker:", current_ticker .. "  MA(" .. current_fast .. "," .. current_slow .. ")"),
+    row("Ticker:", current_ticker .. "  " .. current_strategy),
     row("Status:", status_msg),
     row("Period:", tostring(progress) .. " / " .. tostring(total) .. " bars"),
     "",
@@ -149,7 +152,7 @@ function M.update_dashboard(data)
     "",
     "  " .. bar .. "  " .. tostring(progress) .. "/" .. tostring(total),
     "",
-    ":AlphaStreamRun AAPL 20 100  r restart",
+    ":AlphaStreamRun AAPL mean_reversion  r restart",
   }
 
   pcall(vim.api.nvim_win_set_config, win, { height = #lines })

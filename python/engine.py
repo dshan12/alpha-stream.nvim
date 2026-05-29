@@ -1,5 +1,7 @@
+import importlib
 import json
 import math
+import os
 import sys
 import time
 
@@ -12,7 +14,24 @@ except ImportError:
 TICKER = sys.argv[sys.argv.index("--ticker") + 1] if "--ticker" in sys.argv else "SPY"
 FAST_MA = int(sys.argv[sys.argv.index("--fast") + 1]) if "--fast" in sys.argv else 50
 SLOW_MA = int(sys.argv[sys.argv.index("--slow") + 1]) if "--slow" in sys.argv else 200
+STRATEGY_NAME = sys.argv[sys.argv.index("--strategy") + 1] if "--strategy" in sys.argv else "ma_crossover"
+
 INITIAL_CAPITAL = 10000.0
+
+
+def load_strategy(name):
+    if name.endswith(".py"):
+        name = name[:-3]
+    if "/" in name or "\\" in name:
+        path = os.path.abspath(name)
+        dirname = os.path.dirname(path)
+        modname = os.path.splitext(os.path.basename(path))[0]
+        sys.path.insert(0, dirname)
+        mod = importlib.import_module(modname)
+        sys.path.pop(0)
+    else:
+        mod = importlib.import_module(f"strategies.{name}")
+    return mod
 
 
 def fetch_prices(ticker=TICKER):
@@ -26,12 +45,6 @@ def fetch_prices(ticker=TICKER):
     if len(prices) < 10:
         raise ValueError(f"Too few bars for {ticker} ({len(prices)})")
     return prices
-
-
-def compute_ma(prices, window):
-    if len(prices) < window:
-        return None
-    return sum(prices[-window:]) / window
 
 
 def compute_sharpe(returns, window=20):
@@ -53,6 +66,14 @@ def run_backtest():
         sys.exit(1)
 
     try:
+        strategy = load_strategy(STRATEGY_NAME)
+    except Exception as e:
+        err = {"status": "error", "error_msg": f"Failed to load strategy '{STRATEGY_NAME}': {e}"}
+        print(json.dumps(err))
+        sys.stdout.flush()
+        sys.exit(1)
+
+    try:
         prices = fetch_prices()
     except Exception as e:
         err = {"status": "error", "error_msg": str(e)}
@@ -68,48 +89,33 @@ def run_backtest():
     max_drawdown = 0.0
     prev_portfolio = float(INITIAL_CAPITAL)
     returns = []
-    signals = []
     num_buys = 0
 
-    # ── Strategy Logic ──────────────────────────────────────
-    # This block decides when to buy and sell. Change it to try
-    # different strategies, then press "r" in Neovim to restart.
-    # ─────────────────────────────────────────────────────────
+    strategy_params = {}
+    if hasattr(strategy, "get_params"):
+        strategy_params = strategy.get_params()
+
     for i in range(1, total_bars + 1):
         price = prices[i - 1]
 
-        fast = compute_ma(prices[:i], FAST_MA)
-        slow = compute_ma(prices[:i], SLOW_MA)
+        bar = {
+            "price": price,
+            "prices": prices,
+            "i": i,
+            "capital": capital,
+            "shares": shares,
+            "position": position,
+            "fast_window": FAST_MA,
+            "slow_window": SLOW_MA,
+        }
+        new_capital, new_shares, new_position = strategy.run_bar(bar)
 
-        # — MA Crossover (default) —
-        if fast is not None and slow is not None:
-            if fast > slow and position == 0:
-                shares = int(capital / price)
-                if shares > 0:
-                    capital -= shares * price
-                    position = 1
-                    signals.append("BUY")
-                    num_buys += 1
-            elif fast < slow and position == 1 and shares > 0:
-                capital += shares * price
-                shares = 0
-                position = 0
-                signals.append("SELL")
+        if new_position == 1 and position == 0:
+            num_buys += 1
+        elif new_position == 0 and position == 1:
+            pass
 
-        # — Mean Reversion (uncomment to try) —
-        # mean = sum(prices[max(0,i-21):i]) / min(i, 20)
-        # if price < mean * 0.98 and position == 0:
-        #     shares = int(capital / price)
-        #     if shares > 0:
-        #         capital -= shares * price
-        #         position = 1
-        #         signals.append("BUY")
-        #         num_buys += 1
-        # elif price > mean * 1.02 and position == 1 and shares > 0:
-        #     capital += shares * price
-        #     shares = 0
-        #     position = 0
-        #     signals.append("SELL")
+        capital, shares, position = new_capital, new_shares, new_position
 
         portfolio_value = capital + shares * price
         daily_return = (portfolio_value - prev_portfolio) / prev_portfolio if prev_portfolio > 0 else 0.0
@@ -130,15 +136,21 @@ def run_backtest():
             "drawdown": round(max_drawdown, 2),
             "portfolio": round(portfolio_value, 2),
             "price": round(price, 2),
-            "fast_ma": round(fast, 2) if fast else None,
-            "slow_ma": round(slow, 2) if slow else None,
+            "fast_ma": None,
+            "slow_ma": None,
             "fast_window": FAST_MA,
             "slow_window": SLOW_MA,
+            "strategy": STRATEGY_NAME,
             "position": "long" if position == 1 else "flat",
             "status": "running" if i < total_bars else "done",
             "sharpe": round(sharpe, 2) if sharpe is not None else None,
             "trades": num_buys,
         }
+
+        for k, v in strategy_params.items():
+            if isinstance(v, (int, float)):
+                data[k] = v
+
         print(json.dumps(data))
         sys.stdout.flush()
         time.sleep(0.03)
