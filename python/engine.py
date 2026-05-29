@@ -71,12 +71,17 @@ def run_backtest():
     signals = []
     num_buys = 0
 
+    # ── Strategy Logic ──────────────────────────────────────
+    # This block decides when to buy and sell. Change it to try
+    # different strategies, then press "r" in Neovim to restart.
+    # ─────────────────────────────────────────────────────────
     for i in range(1, total_bars + 1):
         price = prices[i - 1]
 
         fast = compute_ma(prices[:i], FAST_MA)
         slow = compute_ma(prices[:i], SLOW_MA)
 
+        # — MA Crossover (default) —
         if fast is not None and slow is not None:
             if fast > slow and position == 0:
                 shares = int(capital / price)
@@ -90,6 +95,21 @@ def run_backtest():
                 shares = 0
                 position = 0
                 signals.append("SELL")
+
+        # — Mean Reversion (uncomment to try) —
+        # mean = sum(prices[max(0,i-21):i]) / min(i, 20)
+        # if price < mean * 0.98 and position == 0:
+        #     shares = int(capital / price)
+        #     if shares > 0:
+        #         capital -= shares * price
+        #         position = 1
+        #         signals.append("BUY")
+        #         num_buys += 1
+        # elif price > mean * 1.02 and position == 1 and shares > 0:
+        #     capital += shares * price
+        #     shares = 0
+        #     position = 0
+        #     signals.append("SELL")
 
         portfolio_value = capital + shares * price
         daily_return = (portfolio_value - prev_portfolio) / prev_portfolio if prev_portfolio > 0 else 0.0
