@@ -1,22 +1,27 @@
 local M = {}
 
-local job = nil
+local active_job = nil
 local stdout_buf = ""
 local timer = nil
 
-function M.spawn(script_path, on_line, on_exit)
+function M.spawn(script_path, on_line, on_exit, extra_args)
   stdout_buf = ""
 
-  local plugin_root = vim.fn.fnamemodify(script_path, ":h:h")
+  local plugin_root = vim.fn.fnamemodify(script_path, ":p:h:h")
   local venv_python = plugin_root .. "/.venv/bin/python3"
   local python_cmd = vim.fn.executable(venv_python) == 1 and venv_python or "python3"
   local cmd = { python_cmd, script_path }
+  if extra_args then
+    for _, arg in ipairs(extra_args) do
+      table.insert(cmd, arg)
+    end
+  end
 
-  job = vim.system(cmd, {
+  active_job = vim.system(cmd, {
     stdout = true,
     stderr = true,
   }, function(result)
-    job = nil
+    active_job = nil
     if on_exit then
       vim.schedule(function()
         on_exit(result)
@@ -24,7 +29,7 @@ function M.spawn(script_path, on_line, on_exit)
     end
   end)
 
-  if not job then
+  if not active_job then
     vim.schedule(function()
       vim.notify("alpha-stream: failed to spawn python process", vim.log.levels.ERROR)
     end)
@@ -32,10 +37,10 @@ function M.spawn(script_path, on_line, on_exit)
   end
 
   local function read_stdout()
-    if not job then
+    if not active_job then
       return
     end
-    local data = job:stdout_read(4096)
+    local data = active_job:stdout_read(4096)
     if data and #data > 0 then
       stdout_buf = stdout_buf .. data
       local lines = {}
@@ -61,11 +66,14 @@ function M.spawn(script_path, on_line, on_exit)
   timer = uv.new_timer()
   timer:start(10, 50, function()
     vim.schedule(function()
-      if job then
+      if active_job then
         read_stdout()
       else
-        timer:stop()
-        timer:close()
+        if timer then
+          timer:stop()
+          timer:close()
+          timer = nil
+        end
       end
     end)
   end)
@@ -77,9 +85,9 @@ function M.stop()
     timer:close()
     timer = nil
   end
-  if job then
-    job:kill("sigterm")
-    job = nil
+  if active_job then
+    active_job:kill("sigterm")
+    active_job = nil
   end
 end
 

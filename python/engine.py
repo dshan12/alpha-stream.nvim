@@ -10,7 +10,7 @@ try:
 except ImportError:
     HAS_YFINANCE = False
 
-TICKER = "SPY"
+TICKER = sys.argv[sys.argv.index("--ticker") + 1] if "--ticker" in sys.argv else "SPY"
 FAST_MA = 50
 SLOW_MA = 200
 INITIAL_CAPITAL = 10000.0

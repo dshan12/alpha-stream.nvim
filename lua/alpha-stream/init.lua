@@ -3,11 +3,24 @@ local job = require("alpha-stream.job")
 
 local M = {}
 local running = false
+local current_ticker = "SPY"
 
-local engine_path = debug.getinfo(1, "S").source:match("@?(.*/)")
-  or vim.fn.stdpath("data") .. "/alpha-stream/"
+local function get_plugin_root()
+  local src = debug.getinfo(1, "S").source:match("@?(.*/)")
+  if src then
+    return vim.fn.fnamemodify(src, ":p:h:h:h")
+  end
+  return vim.fn.stdpath("data") .. "/alpha-stream/"
+end
 
-function M.start()
+ui.set_restart_callback(function()
+  M.restart()
+end)
+
+function M.start(opts)
+  opts = opts or {}
+  current_ticker = opts.ticker or "SPY"
+
   if running then
     vim.notify("alpha-stream: already running", vim.log.levels.WARN)
     return
@@ -28,9 +41,11 @@ function M.start()
     status = "starting",
   })
 
-  local script = vim.fn.fnamemodify(engine_path .. "../../python/engine.py", ":p")
+  local root = get_plugin_root()
+  local script = root .. "/python/engine.py"
+  local extra_args = { "--ticker", current_ticker }
 
-  job.spawn(script, function(data)
+  local ok, err = pcall(job.spawn, job, script, function(data)
     ui.update_dashboard(data)
   end, function(result)
     running = false
@@ -39,13 +54,26 @@ function M.start()
       ui.show_error("Process exited with code " .. code)
       vim.notify("alpha-stream: process exited with code " .. code, vim.log.levels.ERROR)
     end
-  end)
+  end, extra_args)
+
+  if not ok then
+    running = false
+    ui.show_error(tostring(err))
+    vim.notify("alpha-stream: " .. tostring(err), vim.log.levels.ERROR)
+  end
 end
 
 function M.stop()
   job.stop()
   running = false
   ui.close()
+end
+
+function M.restart()
+  M.stop()
+  vim.defer_fn(function()
+    M.start({ ticker = current_ticker })
+  end, 150)
 end
 
 return M
