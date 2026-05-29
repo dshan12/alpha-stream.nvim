@@ -9,7 +9,7 @@ local W = 60
 local CW = W - 2
 
 local function format_num(n)
-  if n == nil then return "0.00" end
+  if type(n) ~= "number" then return "0.00" end
   local neg = n < 0
   local str = string.format("%.2f", neg and -n or n)
   local int_part, dec_part = str:match("^(%d+).(%d+)$")
@@ -90,11 +90,11 @@ function M.update_dashboard(data)
 
   local pnl_sign = pnl >= 0 and "+" or ""
   local pnl_str = pnl_sign .. "$" .. format_num(math.abs(pnl))
-  local port_str = data.portfolio and "$" .. format_num(data.portfolio) or "N/A"
+  local port_str = type(data.portfolio) == "number" and "$" .. format_num(data.portfolio) or "N/A"
   local dd_str = format_num(data.drawdown) .. "%"
-  local price_str = data.price and "$" .. format_num(data.price) or "N/A"
-  local fast_str = data.fast_ma and "$" .. format_num(data.fast_ma) or "---"
-  local slow_str = data.slow_ma and "$" .. format_num(data.slow_ma) or "---"
+  local price_str = type(data.price) == "number" and "$" .. format_num(data.price) or "N/A"
+  local fast_str = type(data.fast_ma) == "number" and "$" .. format_num(data.fast_ma) or "---"
+  local slow_str = type(data.slow_ma) == "number" and "$" .. format_num(data.slow_ma) or "---"
   local pos_str = data.position == "long" and "LONG" or "FLAT"
 
   local progress = data.progress or 0
