@@ -37,7 +37,6 @@ function M.start(opts)
     fast_ma = nil,
     slow_ma = nil,
     position = "flat",
-    sparkline = "",
     status = "starting",
   })
 
@@ -47,7 +46,13 @@ function M.start(opts)
 
   local ok, err = pcall(function()
     job.spawn(script, function(data)
-      ui.update_dashboard(data)
+      if data.status == "error" then
+        running = false
+        ui.show_error(data.error_msg)
+        vim.notify("alpha-stream: " .. tostring(data.error_msg), vim.log.levels.ERROR)
+      else
+        ui.update_dashboard(data)
+      end
     end, function(result)
       running = false
       local code = result and result.code or -1

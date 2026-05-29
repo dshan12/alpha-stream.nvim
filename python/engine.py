@@ -1,6 +1,5 @@
 import json
 import math
-import random
 import sys
 import time
 
@@ -17,28 +16,15 @@ INITIAL_CAPITAL = 10000.0
 
 
 def fetch_prices(ticker=TICKER):
-    if not HAS_YFINANCE:
-        return generate_synthetic_prices()
-    try:
-        data = yf.download(ticker, period="1y", interval="1d", progress=False)
-        if data.empty:
-            return generate_synthetic_prices()
-        close = data["Close"]
-        if hasattr(close, "droplevel"):
-            close = close.droplevel("Ticker", axis=1) if close.columns.nlevels > 1 else close
-        prices = close.tolist()
-        if len(prices) < 10:
-            return generate_synthetic_prices()
-        return prices
-    except Exception:
-        return generate_synthetic_prices()
-
-
-def generate_synthetic_prices():
-    prices = [150.0]
-    for _ in range(300):
-        change = random.gauss(0.0004, 0.012)
-        prices.append(prices[-1] * (1 + change))
+    data = yf.download(ticker, period="1y", interval="1d", progress=False)
+    if data.empty:
+        raise ValueError(f"No price data for {ticker}")
+    close = data["Close"]
+    if hasattr(close, "iloc") and close.ndim > 1:
+        close = close.iloc[:, 0]
+    prices = list(close)
+    if len(prices) < 10:
+        raise ValueError(f"Too few bars for {ticker} ({len(prices)})")
     return prices
 
 
@@ -60,9 +46,21 @@ def compute_sharpe(returns, window=20):
 
 
 def run_backtest():
-    prices = fetch_prices()
-    total_bars = len(prices)
+    if not HAS_YFINANCE:
+        err = {"status": "error", "error_msg": "yfinance not installed — run: pip install yfinance"}
+        print(json.dumps(err))
+        sys.stdout.flush()
+        sys.exit(1)
 
+    try:
+        prices = fetch_prices()
+    except Exception as e:
+        err = {"status": "error", "error_msg": str(e)}
+        print(json.dumps(err))
+        sys.stdout.flush()
+        sys.exit(1)
+
+    total_bars = len(prices)
     position = 0
     capital = INITIAL_CAPITAL
     shares = 0
