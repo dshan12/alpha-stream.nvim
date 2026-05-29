@@ -1,31 +1,34 @@
 # alpha-stream.nvim
-
-> Watch your backtest stream live **inside Neovim**. No bloated GUI. No alt-tabbing.
+### Run backtests without leaving Neovim.
 
 ![Neovim 0.10+](https://img.shields.io/badge/neovim-0.10%2B-green?style=flat-square&logo=neovim)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python)
 ![License: MIT](https://img.shields.io/badge/license-MIT-yellow?style=flat-square)
-![built with ❤️](https://img.shields.io/badge/built%20with-%E2%9D%A4%EF%B8%8F-red?style=flat-square)
 
 ![demo](https://raw.githubusercontent.com/dshan12/alpha-stream.nvim/main/demo.gif)
 
-A live-streaming financial backtest dashboard that runs entirely inside Neovim. The Python engine streams JSON to stdout; Lua parses it asynchronously and paints a real-time floating window with colored extmarks — all without leaving your editor.
+Every time I wanted to test a trading idea, I had to leave my editor, run a Python script, wait for it to finish, switch back to Neovim, look at the numbers, make a change, and repeat. That got old fast.
+
+So I built a dashboard that runs inside Neovim. Type `:AlphaStreamRun SPY`, and a floating window pops up with PnL, drawdown, Sharpe, and position updating in real time, like a Bloomberg terminal in your editor.
+
+Under the hood it's just a Python process and a Lua callback. Nothing fancy. Change the strategy file, press `r`, and the engine restarts in place. The window stays open, the numbers keep streaming.
 
 ---
 
-## Features
+### Commands
 
-- **📈 Real-time streaming** — PnL, drawdown, portfolio value, and position update every tick
-- **📊 MA Crossover Strategy** — configurable fast/slow windows, defaults to 50/200
-- **🔁 Multiple tickers** — pass any symbol that yfinance supports
-- **⚡ Edit & restart** — swap strategies or write your own, press `r` to reload
-- **📋 Results log** — every run is saved; view with `:AlphaStreamLog`
-- **🎨 Colored extmarks** — green profits, red losses, highlighted positions
-- **🎯 Progress bar** — know exactly how far the backtest has come
+| What | How |
+|------|-----|
+| Run default | `:AlphaStreamRun` |
+| Pick a ticker | `:AlphaStreamRun AAPL` |
+| Pick a strategy | `:AlphaStreamRun SPY mean_reversion` |
+| Custom MAs | `:AlphaStreamRun AAPL ma_crossover 20 100` |
+| Results log | `:AlphaStreamLog` |
+| Open strategy | `:AlphaStreamEdit` |
 
 ---
 
-## Install
+### Install
 
 ```lua
 -- lazy.nvim
@@ -42,37 +45,12 @@ A live-streaming financial backtest dashboard that runs entirely inside Neovim. 
 Plug 'dshan12/alpha-stream.nvim'
 ```
 
----
-
-## Quick Start
-
-```vim
-:AlphaStreamRun
-```
-
-A floating window opens, the Python engine fires up, and you watch your backtest stream live. Press `q` to close.
-
-### Setup
-
-The plugin auto-detects `.venv/bin/python3` in its root directory. Set it up:
-
 ```bash
+# One-time setup
 cd alpha-stream.nvim
 python3 -m venv .venv
 .venv/bin/pip install yfinance
 ```
-
-### Commands
-
-| Command | Description |
-|---------|-------------|
-| `:AlphaStreamRun` | SPY, ma_crossover, MA(50,200) |
-| `:AlphaStreamRun AAPL` | Apple, ma_crossover |
-| `:AlphaStreamRun SPY mean_reversion` | SPY, mean reversion strategy |
-| `:AlphaStreamRun AAPL ma_crossover 20 100` | Apple, MA crossover with custom windows |
-| `:AlphaStreamLog` | Open quickfix list with all past results |
-| `:AlphaStreamEdit` | Open strategy file for editing |
-| `:AlphaStreamStop` | Stop the current backtest |
 
 ### In the dashboard
 
@@ -88,9 +66,9 @@ python3 -m venv .venv
 1. **Run a baseline**: `:AlphaStreamRun SPY ma_crossover 50 200`
 2. **Try a different strategy**: `:AlphaStreamRun SPY mean_reversion`
 3. **Tweak parameters**: `:AlphaStreamRun SPY mean_reversion 20 100`
-4. **Compare results**: `:AlphaStreamLog` — opens quickfix with all runs
+4. **Compare results**: `:AlphaStreamLog` (opens quickfix with all runs)
 5. **Write your own**: create `~/strategies/my_strat.py`, then `:AlphaStreamRun SPY ~/strategies/my_strat.py 50 200`
-6. **Iterate**: edit the `.py` file, press `r` in the dashboard — no Neovim restart needed
+6. **Iterate**: edit the `.py` file, press `r` in the dashboard, no Neovim restart needed
 
 Each run is saved to `~/.local/share/nvim/alpha-stream/results.jsonl` with timestamp, ticker, params, and final metrics.
 
@@ -139,7 +117,7 @@ The `bar` dict has everything you need:
 | `shares` | int | Shares held |
 | `position` | int | 0 = flat, 1 = long |
 
-**Return** `(capital, shares, position)` — the engine handles trade counting and portfolio math.
+**Return** `(capital, shares, position)`. The engine handles trade counting and portfolio math.
 
 Use it with an absolute path:
 
@@ -196,17 +174,16 @@ to display in the dashboard. See the built-in strategies for examples.
 
 ---
 
-## College Application Portfolio
+## What I learned building this
 
-**alpha-stream.nvim** isn't just a plugin — it's a demonstration of genuine CS depth:
+I built this to figure out how Neovim's async process API works, specifically how to stream data from a child process without blocking the UI. The trick was `vim.fn.jobstart()` with `stdout_buffered=false` and routing every update through `vim.schedule()`. Miss that and the editor freezes.
 
-- **Systems Programming** — Spawning and managing a child process from within an editor extension, handling pipe I/O.
-- **Async Architecture** — Designing a multi-process, callback-driven pipeline where a Python engine and a Lua UI communicate over a unidirectional stream without shared memory.
-- **Real-Time Data Processing** — Buffering, parsing, and rendering a stream of structured data at interactive framerates.
-- **Neovim Internals** — Using `vim.fn.jobstart()`, `vim.schedule()`, floating windows, extmarks — the full breadth of the Neovim 0.10+ API.
-- **Resilience** — Clean error handling when Python crashes, graceful shutdown path, and a results log that persists across sessions.
+The Python side was straightforward. The Lua side had a few sharp edges:
+- `vim.json.decode` returns `vim.NIL` (userdata) for JSON null (truthiness checks won't catch it)
+- Window doesn't exist in headless mode (guard every `nvim_list_uis()` call)
+- `vim.system()` looks like the right tool but its `SystemObj` has no streaming API (`jobstart` with `on_stdout` is the way to go)
 
-Built for speed, demonstrated in a modal editor, documented like production software.
+These are all documented in `AGENTS.md` so I don't trip over them again.
 
 ---
 
