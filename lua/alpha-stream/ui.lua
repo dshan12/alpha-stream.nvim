@@ -5,6 +5,8 @@ local win = nil
 local ns = vim.api.nvim_create_namespace("alpha-stream")
 local restart_cb = nil
 local current_ticker = "SPY"
+local current_fast = 50
+local current_slow = 200
 
 local W = 54
 local CW = W - 2
@@ -29,12 +31,24 @@ local function row(label, value)
   return string.format("  %-" .. tostring(LW) .. "s %s", label, value)
 end
 
+local function ma_label(prefix, window)
+  if window then
+    return prefix .. " (" .. tostring(window) .. ")"
+  end
+  return prefix
+end
+
 function M.set_restart_callback(cb)
   restart_cb = cb
 end
 
 function M.set_ticker(t)
   current_ticker = t or "SPY"
+end
+
+function M.set_strategy(fast, slow)
+  current_fast = fast or 50
+  current_slow = slow or 200
 end
 
 function M.open()
@@ -59,7 +73,7 @@ function M.open()
     col = col,
     style = "minimal",
     border = "rounded",
-    title = " α-stream: " .. current_ticker .. " ",
+    title = " α-stream: " .. current_ticker .. " MA(" .. current_fast .. "," .. current_slow .. ") ",
     title_pos = "center",
   })
 
@@ -95,10 +109,12 @@ function M.update_dashboard(data)
   local trades_str = type(data.trades) == "number" and tostring(data.trades) or "--"
   local progress = data.progress or 0
   local total = data.total or 100
+  local fast_win = data.fast_window or current_fast
+  local slow_win = data.slow_window or current_slow
 
-  local title = " α-stream: " .. current_ticker .. " "
+  local title = " α-stream: " .. current_ticker .. " MA(" .. current_fast .. "," .. current_slow .. ") "
   if is_done then
-    title = " α-stream: " .. current_ticker .. " ✓ COMPLETE "
+    title = " α-stream: " .. current_ticker .. " ✓ " .. pnl_str .. " "
   end
   pcall(vim.api.nvim_win_set_config, win, { title = title })
 
@@ -116,7 +132,7 @@ function M.update_dashboard(data)
   local bar = string.rep("█", filled) .. string.rep("░", bar_len - filled)
 
   local lines = {
-    row("Ticker:", current_ticker),
+    row("Ticker:", current_ticker .. "  MA(" .. current_fast .. "," .. current_slow .. ")"),
     row("Status:", status_msg),
     row("Period:", tostring(progress) .. " / " .. tostring(total) .. " bars"),
     "",
@@ -126,14 +142,14 @@ function M.update_dashboard(data)
     row("Sharpe (20d):", sharpe_str),
     "",
     row("Price:", price_str),
-    row("Fast MA (50):", fast_str),
-    row("Slow MA (200):", slow_str),
+    row(ma_label("Fast MA", fast_win) .. ":", fast_str),
+    row(ma_label("Slow MA", slow_win) .. ":", slow_str),
     row("Position:", pos_str),
     row("Trades:", trades_str),
     "",
     "  " .. bar .. "  " .. tostring(progress) .. "/" .. tostring(total),
     "",
-    ":AlphaStreamRun AAPL  q close  r restart",
+    ":AlphaStreamRun AAPL 20 100  r restart",
   }
 
   pcall(vim.api.nvim_win_set_config, win, { height = #lines })

@@ -10,8 +10,8 @@ except ImportError:
     HAS_YFINANCE = False
 
 TICKER = sys.argv[sys.argv.index("--ticker") + 1] if "--ticker" in sys.argv else "SPY"
-FAST_MA = 50
-SLOW_MA = 200
+FAST_MA = int(sys.argv[sys.argv.index("--fast") + 1]) if "--fast" in sys.argv else 50
+SLOW_MA = int(sys.argv[sys.argv.index("--slow") + 1]) if "--slow" in sys.argv else 200
 INITIAL_CAPITAL = 10000.0
 
 
@@ -64,7 +64,6 @@ def run_backtest():
     position = 0
     capital = INITIAL_CAPITAL
     shares = 0
-    entry_price = 0.0
     peak = INITIAL_CAPITAL
     max_drawdown = 0.0
     prev_portfolio = float(INITIAL_CAPITAL)
@@ -82,7 +81,6 @@ def run_backtest():
             if fast > slow and position == 0:
                 shares = int(capital / price)
                 if shares > 0:
-                    entry_price = price
                     capital -= shares * price
                     position = 1
                     signals.append("BUY")
@@ -91,7 +89,6 @@ def run_backtest():
                 capital += shares * price
                 shares = 0
                 position = 0
-                entry_price = 0.0
                 signals.append("SELL")
 
         portfolio_value = capital + shares * price
@@ -106,7 +103,6 @@ def run_backtest():
 
         sharpe = compute_sharpe(returns)
 
-        status = "running" if i < total_bars else "done"
         data = {
             "progress": i,
             "total": total_bars,
@@ -116,32 +112,16 @@ def run_backtest():
             "price": round(price, 2),
             "fast_ma": round(fast, 2) if fast else None,
             "slow_ma": round(slow, 2) if slow else None,
+            "fast_window": FAST_MA,
+            "slow_window": SLOW_MA,
             "position": "long" if position == 1 else "flat",
-            "status": status,
+            "status": "running" if i < total_bars else "done",
             "sharpe": round(sharpe, 2) if sharpe is not None else None,
             "trades": num_buys,
         }
         print(json.dumps(data))
         sys.stdout.flush()
         time.sleep(0.03)
-
-    final_pnl = round(capital + shares * prices[-1] - INITIAL_CAPITAL, 2)
-    summary = {
-        "progress": total_bars,
-        "total": total_bars,
-        "pnl": final_pnl,
-        "drawdown": round(max_drawdown, 2),
-        "portfolio": round(capital + shares * prices[-1], 2),
-        "price": round(prices[-1], 2),
-        "fast_ma": None,
-        "slow_ma": None,
-        "position": "flat",
-        "status": "done",
-        "sharpe": round(sharpe, 2) if sharpe is not None else None,
-        "trades": num_buys,
-    }
-    print(json.dumps(summary))
-    sys.stdout.flush()
 
 
 if __name__ == "__main__":
