@@ -4,6 +4,7 @@ local buf = nil
 local win = nil
 local ns = vim.api.nvim_create_namespace("alpha-stream")
 local restart_cb = nil
+local pnl_ticks = {}
 
 local W = 60
 local CW = W - 2
@@ -25,6 +26,40 @@ local function format_num(n)
   return (neg and "-" or "") .. table.concat(parts, ",") .. "." .. dec_part
 end
 
+local blocks = { " ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█" }
+
+local function render_equity_curve(values, chart_width)
+  local top, bot = "", ""
+  if not values or #values == 0 then return top, bot end
+
+  local n = math.min(#values, chart_width)
+  local start = #values - n + 1
+
+  local mn = values[start]
+  local mx = values[start]
+  for i = start, #values do
+    if values[i] < mn then mn = values[i] end
+    if values[i] > mx then mx = values[i] end
+  end
+  local rng = mx - mn
+  if rng == 0 then rng = 1 end
+
+  for i = start, #values do
+    local scaled = math.floor((values[i] - mn) / rng * 16 + 0.5)
+    scaled = math.max(0, math.min(16, scaled))
+
+    if scaled <= 8 then
+      top = top .. " "
+      bot = bot .. blocks[scaled + 1]
+    else
+      top = top .. blocks[scaled - 8 + 1]
+      bot = bot .. blocks[9]
+    end
+  end
+
+  return top, bot
+end
+
 function M.set_restart_callback(cb)
   restart_cb = cb
 end
@@ -39,7 +74,7 @@ function M.open()
   if not ui_state then return end
 
   buf = vim.api.nvim_create_buf(false, true)
-  local height = 18
+  local height = 21
   local row = math.floor((ui_state.height - height) / 2)
   local col = math.floor((ui_state.width - W) / 2)
 
@@ -104,6 +139,12 @@ function M.update_dashboard(data)
   local bar = string.rep("█", filled) .. string.rep("░", bar_len - filled)
   local progress_str = string.format("[%s] %d/%d", bar, progress, total)
 
+  if type(data.pnl) == "number" then
+    table.insert(pnl_ticks, data.pnl)
+  end
+  local curve_top, curve_bot = render_equity_curve(pnl_ticks, CW - 2)
+  local curve_color = pnl >= 0 and "DiagnosticOk" or "DiagnosticError"
+
   local hdr1 = "  ╔" .. string.rep("═", W - 6) .. "╗"
   local hdr2 = "  ║  α-stream — Real-time Backtest" .. string.rep(" ", W - 6 - 30 - 4) .. "║"
   local hdr3 = "  ╚" .. string.rep("═", W - 6) .. "╝"
@@ -123,6 +164,8 @@ function M.update_dashboard(data)
     make_line("Position:", pos_str),
     "",
     "  " .. progress_str,
+    "  " .. curve_top,
+    "  " .. curve_bot,
   }
 
   if is_done then
@@ -136,7 +179,6 @@ function M.update_dashboard(data)
     table.insert(lines, "  │" .. hint_str .. string.rep(" ", bw - #hint_str) .. "│")
     table.insert(lines, "  └" .. string.rep("─", bw) .. "┘")
   else
-    table.insert(lines, "  " .. (data.sparkline or ""))
     table.insert(lines, "")
     local hint_str = "  Press  q  close  ·  r  restart"
     table.insert(lines, hint_str .. string.rep(" ", CW - #hint_str))
@@ -154,7 +196,8 @@ function M.update_dashboard(data)
     hl_lines.dd = { { 5, (data.drawdown or 0) <= 0 and "DiagnosticOk" or "DiagnosticError", 15, -1 } }
     hl_lines.pos = { { 11, data.position == "long" and "DiagnosticOk" or "Comment", 15, -1 } }
     hl_lines.progress = { { 13, "Special", 2, -1 } }
-    hl_lines.banner = { { 14, "DiagnosticOk", 0, -1 }, { 15, "Comment", 0, -1 }, { 16, "Comment", 0, -1 }, { 17, "Special", 0, -1 } }
+    hl_lines.curve = { { 14, curve_color, 2, -1 }, { 15, curve_color, 2, -1 } }
+    hl_lines.banner = { { 16, "DiagnosticOk", 0, -1 }, { 17, "Comment", 0, -1 }, { 18, "Comment", 0, -1 }, { 19, "Special", 0, -1 } }
   else
     hl_lines.header = { { 0, "Special", 0, -1 }, { 1, "Title", 0, -1 }, { 2, "Special", 0, -1 } }
     hl_lines.labels = { { 4, "Comment", 2, 15 }, { 5, "Comment", 2, 15 }, { 6, "Comment", 2, 15 }, { 8, "Comment", 2, 15 }, { 9, "Comment", 2, 15 }, { 10, "Comment", 2, 15 }, { 11, "Comment", 2, 15 } }
@@ -162,8 +205,8 @@ function M.update_dashboard(data)
     hl_lines.dd = { { 5, (data.drawdown or 0) <= 0 and "DiagnosticOk" or "DiagnosticError", 15, -1 } }
     hl_lines.pos = { { 11, data.position == "long" and "DiagnosticOk" or "Comment", 15, -1 } }
     hl_lines.progress = { { 13, "Special", 2, -1 } }
-    hl_lines.sparkline = { { 14, "Special", 2, -1 } }
-    hl_lines.hint = { { 16, "Comment", 0, -1 } }
+    hl_lines.curve = { { 14, curve_color, 2, -1 }, { 15, curve_color, 2, -1 } }
+    hl_lines.hint = { { 17, "Comment", 0, -1 } }
   end
 
   for _, group in pairs(hl_lines) do
@@ -200,6 +243,7 @@ function M.close()
   end
   win = nil
   buf = nil
+  pnl_ticks = {}
 end
 
 return M
