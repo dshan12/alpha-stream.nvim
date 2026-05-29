@@ -45,16 +45,18 @@ function M.start(opts)
   local script = root .. "/python/engine.py"
   local extra_args = { "--ticker", current_ticker }
 
-  local ok, err = pcall(job.spawn, job, script, function(data)
-    ui.update_dashboard(data)
-  end, function(result)
-    running = false
-    local code = result and result.code or -1
-    if code ~= 0 then
-      ui.show_error("Process exited with code " .. code)
-      vim.notify("alpha-stream: process exited with code " .. code, vim.log.levels.ERROR)
-    end
-  end, extra_args)
+  local ok, err = pcall(function()
+    job.spawn(script, function(data)
+      ui.update_dashboard(data)
+    end, function(result)
+      running = false
+      local code = result and result.code or -1
+      if code ~= 0 then
+        ui.show_error("Process exited with code " .. code)
+        vim.notify("alpha-stream: process exited with code " .. code, vim.log.levels.ERROR)
+      end
+    end, extra_args)
+  end)
 
   if not ok then
     running = false

@@ -35,11 +35,13 @@ function M.open()
     return
   end
 
+  local ui_state = vim.api.nvim_list_uis()[1]
+  if not ui_state then return end
+
   buf = vim.api.nvim_create_buf(false, true)
   local height = 18
-  local ui = vim.api.nvim_list_uis()[1]
-  local row = math.floor((ui.height - height) / 2)
-  local col = math.floor((ui.width - W) / 2)
+  local row = math.floor((ui_state.height - height) / 2)
+  local col = math.floor((ui_state.width - W) / 2)
 
   win = vim.api.nvim_open_win(buf, true, {
     relative = "editor",
@@ -174,6 +176,9 @@ end
 function M.show_error(msg)
   if not buf or not vim.api.nvim_buf_is_valid(buf) then
     M.open()
+  end
+  if not buf or not vim.api.nvim_buf_is_valid(buf) then
+    return
   end
   local lines = {
     "",
