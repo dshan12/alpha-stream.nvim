@@ -116,7 +116,7 @@ function M.update_dashboard(data)
     "",
     row("PnL:", pnl_str),
     row("Portfolio:", port_str),
-    row("Drawdown:", dd_str),
+    row("Max DD:", dd_str),
     row("Sharpe (20d):", sharpe_str),
     "",
     row("Price:", price_str),

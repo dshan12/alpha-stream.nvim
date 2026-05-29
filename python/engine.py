@@ -68,6 +68,7 @@ def run_backtest():
     shares = 0
     entry_price = 0.0
     peak = INITIAL_CAPITAL
+    max_drawdown = 0.0
     prev_portfolio = float(INITIAL_CAPITAL)
     returns = []
     signals = []
@@ -103,6 +104,7 @@ def run_backtest():
         pnl = portfolio_value - INITIAL_CAPITAL
         peak = max(peak, portfolio_value)
         drawdown = ((portfolio_value - peak) / peak * 100) if peak != 0 else 0.0
+        max_drawdown = min(max_drawdown, drawdown)
 
         sharpe = compute_sharpe(returns)
 
@@ -111,7 +113,7 @@ def run_backtest():
             "progress": i,
             "total": total_bars,
             "pnl": round(pnl, 2),
-            "drawdown": round(drawdown, 2),
+            "drawdown": round(max_drawdown, 2),
             "portfolio": round(portfolio_value, 2),
             "price": round(price, 2),
             "fast_ma": round(fast, 2) if fast else None,
@@ -130,7 +132,7 @@ def run_backtest():
         "progress": total_bars,
         "total": total_bars,
         "pnl": final_pnl,
-        "drawdown": round(drawdown, 2),
+        "drawdown": round(max_drawdown, 2),
         "portfolio": round(capital + shares * prices[-1], 2),
         "price": round(prices[-1], 2),
         "fast_ma": None,
