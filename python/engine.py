@@ -48,6 +48,17 @@ def compute_ma(prices, window):
     return sum(prices[-window:]) / window
 
 
+def compute_sharpe(returns, window=20):
+    recent = returns[-window:]
+    n = len(recent)
+    if n < 2:
+        return None
+    mean_ret = sum(recent) / n
+    var = sum((r - mean_ret) ** 2 for r in recent) / (n - 1)
+    std = math.sqrt(var) if var > 0 else 0.0001
+    return (mean_ret / std) * math.sqrt(252)
+
+
 def run_backtest():
     prices = fetch_prices()
     total_bars = len(prices)
@@ -57,8 +68,10 @@ def run_backtest():
     shares = 0
     entry_price = 0.0
     peak = INITIAL_CAPITAL
-    pnl_history = []
+    prev_portfolio = float(INITIAL_CAPITAL)
+    returns = []
     signals = []
+    num_buys = 0
 
     for i in range(1, total_bars + 1):
         price = prices[i - 1]
@@ -74,6 +87,7 @@ def run_backtest():
                     capital -= shares * price
                     position = 1
                     signals.append("BUY")
+                    num_buys += 1
             elif fast < slow and position == 1 and shares > 0:
                 capital += shares * price
                 shares = 0
@@ -82,15 +96,15 @@ def run_backtest():
                 signals.append("SELL")
 
         portfolio_value = capital + shares * price
+        daily_return = (portfolio_value - prev_portfolio) / prev_portfolio if prev_portfolio > 0 else 0.0
+        returns.append(daily_return)
+        prev_portfolio = portfolio_value
+
         pnl = portfolio_value - INITIAL_CAPITAL
         peak = max(peak, portfolio_value)
         drawdown = ((portfolio_value - peak) / peak * 100) if peak != 0 else 0.0
 
-        pnl_history.append(round(pnl, 2))
-        if len(pnl_history) > 20:
-            pnl_history = pnl_history[-20:]
-
-        sparkline = build_sparkline(pnl_history)
+        sharpe = compute_sharpe(returns)
 
         status = "running" if i < total_bars else "done"
         data = {
@@ -103,38 +117,31 @@ def run_backtest():
             "fast_ma": round(fast, 2) if fast else None,
             "slow_ma": round(slow, 2) if slow else None,
             "position": "long" if position == 1 else "flat",
-            "sparkline": sparkline,
             "status": status,
+            "sharpe": round(sharpe, 2) if sharpe is not None else None,
+            "trades": num_buys,
         }
         print(json.dumps(data))
         sys.stdout.flush()
         time.sleep(0.03)
 
+    final_pnl = round(capital + shares * prices[-1] - INITIAL_CAPITAL, 2)
     summary = {
         "progress": total_bars,
         "total": total_bars,
-        "pnl": round(capital + shares * prices[-1] - INITIAL_CAPITAL, 2),
+        "pnl": final_pnl,
         "drawdown": 0,
         "portfolio": round(capital + shares * prices[-1], 2),
         "price": round(prices[-1], 2),
         "fast_ma": None,
         "slow_ma": None,
         "position": "flat",
-        "sparkline": "",
         "status": "done",
+        "sharpe": round(sharpe, 2) if sharpe is not None else None,
+        "trades": num_buys,
     }
     print(json.dumps(summary))
     sys.stdout.flush()
-
-
-def build_sparkline(values):
-    if not values:
-        return ""
-    chars = " \u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588"
-    mn = min(values)
-    mx = max(values)
-    rng = mx - mn if mx != mn else 1
-    return "".join(chars[min(int((v - mn) / rng * 8) + 1, 8)] for v in values)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ local restart_cb = nil
 
 local W = 54
 local CW = W - 2
+local LW = 11
 
 local function fmt(n)
   if type(n) ~= "number" then return "0.00" end
@@ -23,6 +24,10 @@ local function fmt(n)
   return (neg and "-" or "") .. table.concat(parts, ",") .. "." .. dec
 end
 
+local function row(label, value)
+  return string.format("  %-" .. tostring(LW) .. "s %s", label, value)
+end
+
 function M.set_restart_callback(cb)
   restart_cb = cb
 end
@@ -37,15 +42,15 @@ function M.open()
   if not ui_state then return end
 
   buf = vim.api.nvim_create_buf(false, true)
-  local height = 16
-  local row = math.floor((ui_state.height - height) / 2)
+  local height = 17
+  local row_pos = math.floor((ui_state.height - height) / 2)
   local col = math.floor((ui_state.width - W) / 2)
 
   win = vim.api.nvim_open_win(buf, true, {
     relative = "editor",
     width = W,
     height = height,
-    row = row,
+    row = row_pos,
     col = col,
     style = "minimal",
     border = "rounded",
@@ -68,13 +73,7 @@ function M.update_dashboard(data)
 
   local pnl = data.pnl or 0
   local is_done = data.status == "done"
-
-  if is_done then
-    pcall(vim.api.nvim_win_set_config, win, { title = " α-stream ✓ COMPLETE " })
-  else
-    pcall(vim.api.nvim_win_set_config, win, { title = " α-stream " })
-  end
-
+  local is_starting = data.status == "starting"
   local pnl_color = pnl >= 0 and "DiagnosticOk" or "DiagnosticError"
   local dd_color = (data.drawdown or 0) <= 0 and "DiagnosticOk" or "DiagnosticError"
   local pos_color = data.position == "long" and "DiagnosticOk" or "Comment"
@@ -87,46 +86,57 @@ function M.update_dashboard(data)
   local fast_str = type(data.fast_ma) == "number" and "$" .. fmt(data.fast_ma) or "--"
   local slow_str = type(data.slow_ma) == "number" and "$" .. fmt(data.slow_ma) or "--"
   local pos_str = data.position == "long" and "LONG" or "FLAT"
-
-  local bar_len = 18
-  local filled = math.floor((data.progress or 0) / (data.total or 100) * bar_len)
-  local bar = string.rep("█", filled) .. string.rep("░", bar_len - filled)
-
-  local function L(label, val, w)
-    return string.format("  %s %" .. tostring(w or 14) .. "s", label, val)
-  end
-
-  local lines = {
-    L("PnL:", pnl_str, CW - 5),
-    L("Drawdown:", dd_str, CW - 11),
-    L("Portfolio:", port_str, CW - 11),
-    "",
-    L("Price:", price_str, CW - 7),
-    L("Fast MA:", fast_str, CW - 9),
-    L("Slow MA:", slow_str, CW - 9),
-    L("Position:", pos_str, CW - 10),
-    "",
-    "  " .. bar .. string.format("  %d/%d", data.progress or 0, data.total or 0),
-  }
+  local sharpe_str = type(data.sharpe) == "number" and string.format("%.2f", data.sharpe) or "--"
+  local trades_str = type(data.trades) == "number" and tostring(data.trades) or "--"
+  local progress = data.progress or 0
+  local total = data.total or 100
 
   if is_done then
-    table.insert(lines, "")
-    table.insert(lines, "  Backtest Complete")
-    table.insert(lines, "  Final: " .. pnl_str .. string.rep(" ", CW - 14 - #pnl_str))
-    table.insert(lines, "  Press q close · r restart")
-  else
-    table.insert(lines, "")
-    table.insert(lines, "  Press q close · r restart")
+    pcall(vim.api.nvim_win_set_config, win, { title = " α-stream ✓ COMPLETE " })
+  elseif is_starting then
+    pcall(vim.api.nvim_win_set_config, win, { title = " α-stream " })
   end
+
+  local status_msg
+  if is_starting then
+    status_msg = "Initializing backtest..."
+  elseif is_done then
+    status_msg = "Complete!  Final: " .. pnl_str
+  else
+    status_msg = "Live backtest running..."
+  end
+
+  local bar_len = 22
+  local filled = math.floor(progress / total * bar_len)
+  local bar = string.rep("█", filled) .. string.rep("░", bar_len - filled)
+
+  local lines = {
+    row("Status:", status_msg),
+    row("Period:", tostring(progress) .. " / " .. tostring(total) .. " bars"),
+    "",
+    row("PnL:", pnl_str),
+    row("Portfolio:", port_str),
+    row("Drawdown:", dd_str),
+    row("Sharpe (20d):", sharpe_str),
+    "",
+    row("Price:", price_str),
+    row("Fast MA (50):", fast_str),
+    row("Slow MA (200):", slow_str),
+    row("Position:", pos_str),
+    row("Trades:", trades_str),
+    "",
+    "  " .. bar .. "  " .. tostring(progress) .. "/" .. tostring(total),
+    "",
+    "  q close  r restart",
+  }
 
   pcall(vim.api.nvim_win_set_config, win, { height = #lines })
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 
-  vim.api.nvim_buf_add_highlight(buf, ns, pnl_color, 0, 6, -1)
-  vim.api.nvim_buf_add_highlight(buf, ns, dd_color, 1, 6, -1)
-  vim.api.nvim_buf_add_highlight(buf, ns, "DiagnosticOk", 2, 6, -1)
-  vim.api.nvim_buf_add_highlight(buf, ns, pos_color, 7, 6, -1)
-  vim.api.nvim_buf_add_highlight(buf, ns, "Special", 9, 2, -1)
+  vim.api.nvim_buf_add_highlight(buf, ns, pnl_color, 3, 0, -1)
+  vim.api.nvim_buf_add_highlight(buf, ns, dd_color, 5, 0, -1)
+  vim.api.nvim_buf_add_highlight(buf, ns, pos_color, 11, 0, -1)
+  vim.api.nvim_buf_add_highlight(buf, ns, "Special", 14, 2, -1)
 end
 
 function M.show_error(msg)
@@ -134,7 +144,7 @@ function M.show_error(msg)
     M.open()
   end
   if not buf or not vim.api.nvim_buf_is_valid(buf) then return end
-  local lines = { "", "  ERROR", "", "  " .. msg, "", "  Press q to close" }
+  local lines = { "", "  ERROR", "", "  " .. msg, "", "  q to close" }
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   pcall(vim.api.nvim_win_set_config, win, { height = #lines })
   vim.api.nvim_buf_add_highlight(buf, ns, "DiagnosticError", 1, 2, -1)
