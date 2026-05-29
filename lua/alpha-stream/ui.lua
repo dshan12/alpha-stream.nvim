@@ -26,11 +26,12 @@ local function format_num(n)
   return (neg and "-" or "") .. table.concat(parts, ",") .. "." .. dec_part
 end
 
-local blocks = { " ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█" }
+local CHART_H = 6
 
 local function render_equity_curve(values, chart_width)
-  local top, bot = "", ""
-  if not values or #values == 0 then return top, bot end
+  local rows = {}
+  for i = 1, CHART_H do rows[i] = "" end
+  if not values or #values == 0 then return rows end
 
   local n = math.min(#values, chart_width)
   local start = #values - n + 1
@@ -44,20 +45,30 @@ local function render_equity_curve(values, chart_width)
   local rng = mx - mn
   if rng == 0 then rng = 1 end
 
-  for i = start, #values do
-    local scaled = math.floor((values[i] - mn) / rng * 16 + 0.5)
-    scaled = math.max(0, math.min(16, scaled))
+  local partials = { "▁", "▂", "▃", "▄" }
 
-    if scaled <= 8 then
-      top = top .. " "
-      bot = bot .. blocks[scaled + 1]
-    else
-      top = top .. blocks[scaled - 8 + 1]
-      bot = bot .. blocks[9]
+  for i = start, #values do
+    local raw = (values[i] - mn) / rng * (CHART_H * 4)
+    local row = math.floor(raw / 4)
+    local sub = raw % 4
+
+    for r = 0, CHART_H - 1 do
+      local idx = CHART_H - r
+      if r < row then
+        rows[idx] = rows[idx] .. "█"
+      elseif r == row then
+        if sub >= 3 then
+          rows[idx] = rows[idx] .. "█"
+        else
+          rows[idx] = rows[idx] .. partials[math.floor(sub) + 1]
+        end
+      else
+        rows[idx] = rows[idx] .. " "
+      end
     end
   end
 
-  return top, bot
+  return rows
 end
 
 function M.set_restart_callback(cb)
@@ -74,7 +85,7 @@ function M.open()
   if not ui_state then return end
 
   buf = vim.api.nvim_create_buf(false, true)
-  local height = 21
+  local height = 25
   local row = math.floor((ui_state.height - height) / 2)
   local col = math.floor((ui_state.width - W) / 2)
 
@@ -142,7 +153,7 @@ function M.update_dashboard(data)
   if type(data.pnl) == "number" then
     table.insert(pnl_ticks, data.pnl)
   end
-  local curve_top, curve_bot = render_equity_curve(pnl_ticks, CW - 2)
+  local curve = render_equity_curve(pnl_ticks, CW - 2)
   local curve_color = pnl >= 0 and "DiagnosticOk" or "DiagnosticError"
 
   local hdr1 = "  ╔" .. string.rep("═", W - 6) .. "╗"
@@ -164,9 +175,11 @@ function M.update_dashboard(data)
     make_line("Position:", pos_str),
     "",
     "  " .. progress_str,
-    "  " .. curve_top,
-    "  " .. curve_bot,
   }
+
+  for _, row in ipairs(curve) do
+    table.insert(lines, "  " .. row)
+  end
 
   if is_done then
     local bw = CW - 4
@@ -187,6 +200,9 @@ function M.update_dashboard(data)
   pcall(vim.api.nvim_win_set_config, win, { height = #lines })
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 
+  local curve_start = 14
+  local hint_line = curve_start + CHART_H + 1
+
   local hl_lines = {}
 
   if is_done then
@@ -196,8 +212,12 @@ function M.update_dashboard(data)
     hl_lines.dd = { { 5, (data.drawdown or 0) <= 0 and "DiagnosticOk" or "DiagnosticError", 15, -1 } }
     hl_lines.pos = { { 11, data.position == "long" and "DiagnosticOk" or "Comment", 15, -1 } }
     hl_lines.progress = { { 13, "Special", 2, -1 } }
-    hl_lines.curve = { { 14, curve_color, 2, -1 }, { 15, curve_color, 2, -1 } }
-    hl_lines.banner = { { 16, "DiagnosticOk", 0, -1 }, { 17, "Comment", 0, -1 }, { 18, "Comment", 0, -1 }, { 19, "Special", 0, -1 } }
+    local curve_hl = {}
+    for r = 1, CHART_H do
+      table.insert(curve_hl, { r - 1 + curve_start, curve_color, 2, -1 })
+    end
+    hl_lines.curve = curve_hl
+    hl_lines.banner = { { hint_line, "DiagnosticOk", 0, -1 }, { hint_line + 1, "Comment", 0, -1 }, { hint_line + 2, "Comment", 0, -1 }, { hint_line + 3, "Special", 0, -1 } }
   else
     hl_lines.header = { { 0, "Special", 0, -1 }, { 1, "Title", 0, -1 }, { 2, "Special", 0, -1 } }
     hl_lines.labels = { { 4, "Comment", 2, 15 }, { 5, "Comment", 2, 15 }, { 6, "Comment", 2, 15 }, { 8, "Comment", 2, 15 }, { 9, "Comment", 2, 15 }, { 10, "Comment", 2, 15 }, { 11, "Comment", 2, 15 } }
@@ -205,8 +225,12 @@ function M.update_dashboard(data)
     hl_lines.dd = { { 5, (data.drawdown or 0) <= 0 and "DiagnosticOk" or "DiagnosticError", 15, -1 } }
     hl_lines.pos = { { 11, data.position == "long" and "DiagnosticOk" or "Comment", 15, -1 } }
     hl_lines.progress = { { 13, "Special", 2, -1 } }
-    hl_lines.curve = { { 14, curve_color, 2, -1 }, { 15, curve_color, 2, -1 } }
-    hl_lines.hint = { { 17, "Comment", 0, -1 } }
+    local curve_hl = {}
+    for r = 1, CHART_H do
+      table.insert(curve_hl, { r - 1 + curve_start, curve_color, 2, -1 })
+    end
+    hl_lines.curve = curve_hl
+    hl_lines.hint = { { hint_line, "Comment", 0, -1 } }
   end
 
   for _, group in pairs(hl_lines) do
