@@ -130,7 +130,7 @@ def run_backtest():
         "progress": total_bars,
         "total": total_bars,
         "pnl": final_pnl,
-        "drawdown": 0,
+        "drawdown": round(drawdown, 2),
         "portfolio": round(capital + shares * prices[-1], 2),
         "price": round(prices[-1], 2),
         "fast_ma": None,
