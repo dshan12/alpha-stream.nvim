@@ -27,6 +27,7 @@ function M.start(opts)
   end
 
   running = true
+  ui.set_ticker(current_ticker)
   ui.open()
   ui.update_dashboard({
     progress = 0,

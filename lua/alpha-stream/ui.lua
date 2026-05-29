@@ -4,6 +4,7 @@ local buf = nil
 local win = nil
 local ns = vim.api.nvim_create_namespace("alpha-stream")
 local restart_cb = nil
+local current_ticker = "SPY"
 
 local W = 54
 local CW = W - 2
@@ -32,6 +33,10 @@ function M.set_restart_callback(cb)
   restart_cb = cb
 end
 
+function M.set_ticker(t)
+  current_ticker = t or "SPY"
+end
+
 function M.open()
   if win and vim.api.nvim_win_is_valid(win) then
     vim.api.nvim_set_current_win(win)
@@ -42,7 +47,7 @@ function M.open()
   if not ui_state then return end
 
   buf = vim.api.nvim_create_buf(false, true)
-  local height = 17
+  local height = 18
   local row_pos = math.floor((ui_state.height - height) / 2)
   local col = math.floor((ui_state.width - W) / 2)
 
@@ -54,7 +59,7 @@ function M.open()
     col = col,
     style = "minimal",
     border = "rounded",
-    title = " α-stream ",
+    title = " α-stream: " .. current_ticker .. " ",
     title_pos = "center",
   })
 
@@ -91,11 +96,11 @@ function M.update_dashboard(data)
   local progress = data.progress or 0
   local total = data.total or 100
 
+  local title = " α-stream: " .. current_ticker .. " "
   if is_done then
-    pcall(vim.api.nvim_win_set_config, win, { title = " α-stream ✓ COMPLETE " })
-  elseif is_starting then
-    pcall(vim.api.nvim_win_set_config, win, { title = " α-stream " })
+    title = " α-stream: " .. current_ticker .. " ✓ COMPLETE "
   end
+  pcall(vim.api.nvim_win_set_config, win, { title = title })
 
   local status_msg
   if is_starting then
@@ -111,6 +116,7 @@ function M.update_dashboard(data)
   local bar = string.rep("█", filled) .. string.rep("░", bar_len - filled)
 
   local lines = {
+    row("Ticker:", current_ticker),
     row("Status:", status_msg),
     row("Period:", tostring(progress) .. " / " .. tostring(total) .. " bars"),
     "",
@@ -127,16 +133,16 @@ function M.update_dashboard(data)
     "",
     "  " .. bar .. "  " .. tostring(progress) .. "/" .. tostring(total),
     "",
-    "  q close  r restart",
+    ":AlphaStreamRun AAPL  q close  r restart",
   }
 
   pcall(vim.api.nvim_win_set_config, win, { height = #lines })
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 
-  vim.api.nvim_buf_add_highlight(buf, ns, pnl_color, 3, 0, -1)
-  vim.api.nvim_buf_add_highlight(buf, ns, dd_color, 5, 0, -1)
-  vim.api.nvim_buf_add_highlight(buf, ns, pos_color, 11, 0, -1)
-  vim.api.nvim_buf_add_highlight(buf, ns, "Special", 14, 2, -1)
+  vim.api.nvim_buf_add_highlight(buf, ns, pnl_color, 4, 0, -1)
+  vim.api.nvim_buf_add_highlight(buf, ns, dd_color, 6, 0, -1)
+  vim.api.nvim_buf_add_highlight(buf, ns, pos_color, 12, 0, -1)
+  vim.api.nvim_buf_add_highlight(buf, ns, "Special", 15, 2, -1)
 end
 
 function M.show_error(msg)
