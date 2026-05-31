@@ -44,10 +44,10 @@ end)
 
 function M.start(opts)
   opts = opts or {}
-  current_ticker = opts.ticker or "SPY"
-  current_strategy = opts.strategy or "ma_crossover"
-  current_fast = opts.fast_ma or 50
-  current_slow = opts.slow_ma or 200
+  current_ticker = type(opts.ticker) == "string" and opts.ticker or "SPY"
+  current_strategy = type(opts.strategy) == "string" and opts.strategy or "ma_crossover"
+  current_fast = type(opts.fast_ma) == "number" and opts.fast_ma or 50
+  current_slow = type(opts.slow_ma) == "number" and opts.slow_ma or 200
 
   if running then
     vim.notify("alpha-stream: already running", vim.log.levels.WARN)

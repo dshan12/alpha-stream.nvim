@@ -44,13 +44,13 @@ function M.set_restart_callback(cb)
 end
 
 function M.set_ticker(t)
-  current_ticker = t or "SPY"
+  current_ticker = type(t) == "string" and t or "SPY"
 end
 
 function M.set_strategy(fast, slow, strat)
-  current_fast = fast or 50
-  current_slow = slow or 200
-  current_strategy = strat or "ma_crossover"
+  current_fast = type(fast) == "number" and fast or 50
+  current_slow = type(slow) == "number" and slow or 200
+  current_strategy = type(strat) == "string" and strat or "ma_crossover"
 end
 
 function M.open()
