@@ -1,3 +1,4 @@
+import argparse
 import importlib
 import json
 import math
@@ -11,12 +12,23 @@ try:
 except ImportError:
     HAS_YFINANCE = False
 
-TICKER = sys.argv[sys.argv.index("--ticker") + 1] if "--ticker" in sys.argv else "SPY"
-FAST_MA = int(sys.argv[sys.argv.index("--fast") + 1]) if "--fast" in sys.argv else 50
-SLOW_MA = int(sys.argv[sys.argv.index("--slow") + 1]) if "--slow" in sys.argv else 200
-STRATEGY_NAME = sys.argv[sys.argv.index("--strategy") + 1] if "--strategy" in sys.argv else "ma_crossover"
-
 INITIAL_CAPITAL = 10000.0
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ticker", default="SPY")
+    parser.add_argument("--strategy", default="ma_crossover")
+    parser.add_argument("--fast", type=int, default=50)
+    parser.add_argument("--slow", type=int, default=200)
+    return parser.parse_args()
+
+
+ARGS = parse_args()
+TICKER = ARGS.ticker
+STRATEGY_NAME = ARGS.strategy
+FAST_MA = ARGS.fast
+SLOW_MA = ARGS.slow
 
 
 def load_strategy(name):
@@ -36,15 +48,23 @@ def load_strategy(name):
 
 def fetch_prices(ticker=TICKER):
     data = yf.download(ticker, period="1y", interval="1d", progress=False)
-    if data.empty:
+    if data is None or data.empty:
         raise ValueError(f"No price data for {ticker}")
-    close = data["Close"]
+    close = data.get("Close")
+    if close is None:
+        raise ValueError(f"No Close column for {ticker}")
     if hasattr(close, "iloc") and close.ndim > 1:
         close = close.iloc[:, 0]
-    prices = list(close)
+    prices = close.dropna().tolist()
     if len(prices) < 10:
         raise ValueError(f"Too few bars for {ticker} ({len(prices)})")
     return prices
+
+
+def clean_number(value):
+    if value is None or (isinstance(value, float) and (math.isnan(value) or math.isinf(value))):
+        return None
+    return value
 
 
 def compute_sharpe(returns, window=20):
@@ -54,8 +74,12 @@ def compute_sharpe(returns, window=20):
         return None
     mean_ret = sum(recent) / n
     var = sum((r - mean_ret) ** 2 for r in recent) / (n - 1)
-    std = math.sqrt(var) if var > 0 else 0.0001
-    return (mean_ret / std) * math.sqrt(252)
+    if var <= 0:
+        std = 0.0001
+    else:
+        std = math.sqrt(var)
+    val = (mean_ret / std) * math.sqrt(252)
+    return clean_number(val)
 
 
 def run_backtest():
@@ -69,6 +93,12 @@ def run_backtest():
         strategy = load_strategy(STRATEGY_NAME)
     except Exception as e:
         err = {"status": "error", "error_msg": f"Failed to load strategy '{STRATEGY_NAME}': {e}"}
+        print(json.dumps(err))
+        sys.stdout.flush()
+        sys.exit(1)
+
+    if not hasattr(strategy, "run_bar"):
+        err = {"status": "error", "error_msg": f"Strategy '{STRATEGY_NAME}' has no run_bar() function"}
         print(json.dumps(err))
         sys.stdout.flush()
         sys.exit(1)
@@ -98,6 +128,9 @@ def run_backtest():
     for i in range(1, total_bars + 1):
         price = prices[i - 1]
 
+        if math.isnan(price) or math.isinf(price):
+            continue
+
         bar = {
             "price": price,
             "prices": prices,
@@ -108,12 +141,17 @@ def run_backtest():
             "fast_window": FAST_MA,
             "slow_window": SLOW_MA,
         }
-        new_capital, new_shares, new_position = strategy.run_bar(bar)
+
+        try:
+            new_capital, new_shares, new_position = strategy.run_bar(bar)
+        except Exception as e:
+            err = {"status": "error", "error_msg": f"Strategy error at bar {i}: {e}"}
+            print(json.dumps(err))
+            sys.stdout.flush()
+            sys.exit(1)
 
         if new_position == 1 and position == 0:
             num_buys += 1
-        elif new_position == 0 and position == 1:
-            pass
 
         capital, shares, position = new_capital, new_shares, new_position
 
@@ -132,10 +170,10 @@ def run_backtest():
         data = {
             "progress": i,
             "total": total_bars,
-            "pnl": round(pnl, 2),
-            "drawdown": round(max_drawdown, 2),
-            "portfolio": round(portfolio_value, 2),
-            "price": round(price, 2),
+            "pnl": clean_number(round(pnl, 2)),
+            "drawdown": clean_number(round(max_drawdown, 2)),
+            "portfolio": clean_number(round(portfolio_value, 2)),
+            "price": clean_number(round(price, 2)),
             "fast_ma": None,
             "slow_ma": None,
             "fast_window": FAST_MA,
@@ -143,13 +181,13 @@ def run_backtest():
             "strategy": STRATEGY_NAME,
             "position": "long" if position == 1 else "flat",
             "status": "running" if i < total_bars else "done",
-            "sharpe": round(sharpe, 2) if sharpe is not None else None,
+            "sharpe": clean_number(round(sharpe, 2)) if sharpe is not None else None,
             "trades": num_buys,
         }
 
         for k, v in strategy_params.items():
             if isinstance(v, (int, float)):
-                data[k] = v
+                data[k] = clean_number(v)
 
         print(json.dumps(data))
         sys.stdout.flush()

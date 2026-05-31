@@ -92,16 +92,17 @@ function M.update_dashboard(data)
   if not buf or not vim.api.nvim_buf_is_valid(buf) then return end
   vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
 
-  local pnl = data.pnl or 0
+  local pnl = type(data.pnl) == "number" and data.pnl or 0
   local is_done = data.status == "done"
   local is_starting = data.status == "starting"
   local pnl_color = pnl >= 0 and "DiagnosticOk" or "DiagnosticError"
-  local dd_color = (data.drawdown or 0) <= 0 and "DiagnosticOk" or "DiagnosticError"
+  local dd_val = type(data.drawdown) == "number" and data.drawdown or 0
+  local dd_color = dd_val <= 0 and "DiagnosticOk" or "DiagnosticError"
   local pos_color = data.position == "long" and "DiagnosticOk" or "Comment"
 
   local pnl_sign = pnl >= 0 and "+" or ""
   local pnl_str = pnl_sign .. "$" .. fmt(math.abs(pnl))
-  local dd_str = fmt(data.drawdown) .. "%"
+  local dd_str = fmt(dd_val) .. "%"
   local port_str = type(data.portfolio) == "number" and "$" .. fmt(data.portfolio) or "--"
   local price_str = type(data.price) == "number" and "$" .. fmt(data.price) or "--"
   local fast_str = type(data.fast_ma) == "number" and "$" .. fmt(data.fast_ma) or "--"
@@ -109,10 +110,10 @@ function M.update_dashboard(data)
   local pos_str = data.position == "long" and "LONG" or "FLAT"
   local sharpe_str = type(data.sharpe) == "number" and string.format("%.2f", data.sharpe) or "--"
   local trades_str = type(data.trades) == "number" and tostring(data.trades) or "--"
-  local progress = data.progress or 0
-  local total = data.total or 100
-  local fast_win = data.fast_window or current_fast
-  local slow_win = data.slow_window or current_slow
+  local progress = type(data.progress) == "number" and data.progress or 0
+  local total = type(data.total) == "number" and data.total or 100
+  local fast_win = type(data.fast_window) == "number" and data.fast_window or current_fast
+  local slow_win = type(data.slow_window) == "number" and data.slow_window or current_slow
 
   local strat_label = current_strategy:gsub("_", " "):gsub("^%l", string.upper)
   local title = " " .. current_ticker .. " · " .. strat_label .. " · MA(" .. current_fast .. "," .. current_slow .. ") "

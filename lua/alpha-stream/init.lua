@@ -26,10 +26,10 @@ local function save_result(data)
     strategy = current_strategy,
     fast_ma = current_fast,
     slow_ma = current_slow,
-    pnl = data.pnl,
-    drawdown = data.drawdown,
-    sharpe = data.sharpe,
-    trades = data.trades,
+    pnl = type(data.pnl) == "number" and data.pnl or 0,
+    drawdown = type(data.drawdown) == "number" and data.drawdown or 0,
+    sharpe = type(data.sharpe) == "number" and data.sharpe or nil,
+    trades = type(data.trades) == "number" and data.trades or 0,
   }
   local line = vim.json.encode(entry) .. "\n"
   local fd = vim.fn.writefile({ line }, path, "a")
@@ -80,8 +80,8 @@ function M.start(opts)
     job.spawn(script, function(data)
       if data.status == "error" then
         running = false
-        ui.show_error(data.error_msg)
-        vim.notify("alpha-stream: " .. tostring(data.error_msg), vim.log.levels.ERROR)
+        ui.show_error(tostring(data.error_msg or "unknown error"))
+        vim.notify("alpha-stream: " .. tostring(data.error_msg or "unknown error"), vim.log.levels.ERROR)
       else
         ui.update_dashboard(data)
         if data.status == "done" then
@@ -129,11 +129,17 @@ function M.log()
   for _, line in ipairs(fd) do
     local ok, entry = pcall(vim.json.decode, line)
     if ok and entry then
+      local log_fast = type(entry.fast_ma) == "number" and tostring(entry.fast_ma) or "?"
+      local log_slow = type(entry.slow_ma) == "number" and tostring(entry.slow_ma) or "?"
+      local log_pnl = type(entry.pnl) == "number" and string.format("%+.2f", entry.pnl) or "?"
+      local log_dd = type(entry.drawdown) == "number" and string.format("%.2f", entry.drawdown) or "?"
+      local log_sharpe = type(entry.sharpe) == "number" and string.format("%.2f", entry.sharpe) or "?"
+      local log_trades = type(entry.trades) == "number" and tostring(entry.trades) or "?"
       table.insert(qf, {
         filename = path,
-        text = string.format("[%s] %s MA(%d,%d) PnL=%+.2f DD=%s Sharpe=%s Trades=%s",
-          entry.ticker, entry.timestamp, entry.fast_ma, entry.slow_ma,
-          entry.pnl, tostring(entry.drawdown), tostring(entry.sharpe), tostring(entry.trades)),
+        text = string.format("[%s] %s MA(%s,%s) PnL=%s DD=%s Sharpe=%s Trades=%s",
+          entry.ticker, entry.timestamp, log_fast, log_slow,
+          log_pnl, log_dd, log_sharpe, log_trades),
       })
     end
   end

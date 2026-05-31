@@ -40,6 +40,16 @@ Under the hood it's just a Python process and a Lua callback. Nothing fancy. Cha
 }
 ```
 
+```lua
+-- packer.nvim
+use {
+  "dshan12/alpha-stream.nvim",
+  config = function()
+    require("alpha-stream")
+  end,
+}
+```
+
 ```vim
 " vim-plug
 Plug 'dshan12/alpha-stream.nvim'
