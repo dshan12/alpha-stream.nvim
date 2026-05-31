@@ -30,6 +30,6 @@ def run_bar(bar):
 
 
 def compute_ma(prices, window):
-    if len(prices) < window:
+    if window <= 0 or len(prices) < window:
         return None
     return sum(prices[-window:]) / window

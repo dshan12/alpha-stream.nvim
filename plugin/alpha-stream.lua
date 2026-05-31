@@ -37,7 +37,12 @@ vim.api.nvim_create_user_command("AlphaStreamLog", function()
 end, { desc = "Show backtest results log" })
 
 vim.api.nvim_create_user_command("AlphaStreamEdit", function()
-  local src = debug.getinfo(require("alpha-stream").start, "S").source:match("@?(.*)")
+  local ok, mod = pcall(require, "alpha-stream")
+  if not ok or not mod or not mod.start then return end
+  local info = debug.getinfo(mod.start, "S")
+  if not info or not info.source then return end
+  local src = info.source:match("@?(.*)")
+  if not src then return end
   local root = vim.fn.fnamemodify(src, ":p:h:h:h")
   vim.cmd("edit " .. root .. "/python/engine.py")
 end, { desc = "Open strategy file for editing" })

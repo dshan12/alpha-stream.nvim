@@ -157,12 +157,14 @@ function M.update_dashboard(data)
   }
 
   pcall(vim.api.nvim_win_set_config, win, { height = #lines })
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  if not buf or not vim.api.nvim_buf_is_valid(buf) then return end
+  pcall(vim.api.nvim_buf_set_lines, buf, 0, -1, false, lines)
 
-  vim.api.nvim_buf_add_highlight(buf, ns, pnl_color, 4, 0, -1)
-  vim.api.nvim_buf_add_highlight(buf, ns, dd_color, 6, 0, -1)
-  vim.api.nvim_buf_add_highlight(buf, ns, pos_color, 12, 0, -1)
-  vim.api.nvim_buf_add_highlight(buf, ns, "Special", 15, 2, -1)
+  if not buf or not vim.api.nvim_buf_is_valid(buf) then return end
+  pcall(vim.api.nvim_buf_add_highlight, buf, ns, pnl_color, 4, 0, -1)
+  pcall(vim.api.nvim_buf_add_highlight, buf, ns, dd_color, 6, 0, -1)
+  pcall(vim.api.nvim_buf_add_highlight, buf, ns, pos_color, 12, 0, -1)
+  pcall(vim.api.nvim_buf_add_highlight, buf, ns, "Special", 15, 2, -1)
 end
 
 function M.show_error(msg)

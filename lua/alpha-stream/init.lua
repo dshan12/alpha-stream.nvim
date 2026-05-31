@@ -24,8 +24,8 @@ local function save_result(data)
     timestamp = os.date("%Y-%m-%d %H:%M:%S"),
     ticker = current_ticker,
     strategy = current_strategy,
-    fast_ma = current_fast,
-    slow_ma = current_slow,
+    fast_win = current_fast,
+    slow_win = current_slow,
     pnl = type(data.pnl) == "number" and data.pnl or 0,
     drawdown = type(data.drawdown) == "number" and data.drawdown or 0,
     sharpe = type(data.sharpe) == "number" and data.sharpe or nil,
@@ -77,7 +77,7 @@ function M.start(opts)
   local extra_args = { "--ticker", current_ticker, "--strategy", current_strategy, "--fast", tostring(current_fast), "--slow", tostring(current_slow) }
 
   local ok, err = pcall(function()
-    job.spawn(script, function(data)
+    local started = job.spawn(script, function(data)
       if data.status == "error" then
         running = false
         ui.show_error(tostring(data.error_msg or "unknown error"))
@@ -96,6 +96,9 @@ function M.start(opts)
         vim.notify("alpha-stream: process exited with code " .. code, vim.log.levels.ERROR)
       end
     end, extra_args)
+    if not started then
+      running = false
+    end
   end)
 
   if not ok then
@@ -129,8 +132,8 @@ function M.log()
   for _, line in ipairs(fd) do
     local ok, entry = pcall(vim.json.decode, line)
     if ok and entry then
-      local log_fast = type(entry.fast_ma) == "number" and tostring(entry.fast_ma) or "?"
-      local log_slow = type(entry.slow_ma) == "number" and tostring(entry.slow_ma) or "?"
+      local log_fast = type(entry.fast_win) == "number" and tostring(entry.fast_win) or "?"
+      local log_slow = type(entry.slow_win) == "number" and tostring(entry.slow_win) or "?"
       local log_pnl = type(entry.pnl) == "number" and string.format("%+.2f", entry.pnl) or "?"
       local log_dd = type(entry.drawdown) == "number" and string.format("%.2f", entry.drawdown) or "?"
       local log_sharpe = type(entry.sharpe) == "number" and string.format("%.2f", entry.sharpe) or "?"

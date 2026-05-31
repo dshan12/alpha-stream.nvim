@@ -1,6 +1,7 @@
 local M = {}
 
 local job_id = nil
+local current_id = 0
 
 function M.spawn(script_path, on_line, on_exit, extra_args)
   local plugin_root = vim.fn.fnamemodify(script_path, ":p:h:h")
@@ -14,15 +15,20 @@ function M.spawn(script_path, on_line, on_exit, extra_args)
     end
   end
 
-  job_id = vim.fn.jobstart(cmd, {
+  current_id = current_id + 1
+  local my_id = current_id
+
+  local jid = vim.fn.jobstart(cmd, {
     on_stdout = function(_, lines, _)
       if not lines or #lines == 0 then return end
+      if my_id ~= current_id then return end
       for i = 1, #lines do
         local line = lines[i]
         if line and #line > 0 then
           local ok, parsed = pcall(vim.json.decode, line)
-          if ok and parsed then
+          if ok and parsed and on_line then
             vim.schedule(function()
+              if my_id ~= current_id then return end
               on_line(parsed)
             end)
           end
@@ -30,9 +36,11 @@ function M.spawn(script_path, on_line, on_exit, extra_args)
       end
     end,
     on_exit = function(_, code, _)
+      if my_id ~= current_id then return end
       job_id = nil
       if on_exit then
         vim.schedule(function()
+          if my_id ~= current_id then return end
           on_exit({ code = code, signal = 0 })
         end)
       end
@@ -40,12 +48,16 @@ function M.spawn(script_path, on_line, on_exit, extra_args)
     stdout_buffered = false,
   })
 
-  if job_id == 0 or job_id == -1 then
+  if jid == 0 or jid == -1 then
     vim.schedule(function()
       vim.notify("alpha-stream: failed to spawn python process", vim.log.levels.ERROR)
     end)
     job_id = nil
+    return false
   end
+
+  job_id = jid
+  return true
 end
 
 function M.stop()
@@ -53,6 +65,7 @@ function M.stop()
     vim.fn.jobstop(job_id)
     job_id = nil
   end
+  current_id = current_id + 1
 end
 
 return M

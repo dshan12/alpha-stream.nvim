@@ -2,12 +2,12 @@
 
 ## Project Status
 
-Implemented Neovim plugin (alpha-stream.nvim) — live-streaming financial backtest dashboard.
+Implemented Neovim plugin (alpha-stream.nvim): live-streaming financial backtest dashboard.
 
 ## Tech Stack
 
-- **Lua** — Neovim plugin frontend (floating UI via `nvim_open_win`, extmarks for color)
-- **Python** — Backtest engine (yfinance or synthetic, JSON lines to stdout)
+- **Lua**: Neovim plugin frontend (floating UI via `nvim_open_win`, extmarks for color)
+- **Python**: Backtest engine (yfinance or synthetic, JSON lines to stdout)
 - **Required**: Neovim 0.10+, Python 3.10+
 
 ## Directory Structure
@@ -30,7 +30,7 @@ demo.tape                     # VHS v0.11.0 demo recording script
 
 `vim.system()` in Neovim 0.10 does NOT support `stdout_read()` for streaming. The returned `SystemObj` only has `wait`, `kill`, `write`, `is_closing`. Use `vim.fn.jobstart()` with `on_stdout` callback and `stdout_buffered = false` instead.
 
-`vim.uv.spawn()` also has issues — the event loop doesn't process uv handles properly when called from `-c` context in headless mode.
+`vim.uv.spawn()` also has issues: the event loop doesn't process uv handles properly when called from `-c` context in headless mode.
 
 ### `pcall(module.fn, module, ...)` shifts args
 
@@ -66,4 +66,4 @@ vhs demo.tape
 - UI updates wrapped in `vim.schedule()` (Neovim is single-threaded)
 - Commands: `:AlphaStreamRun [TICKER]`, `:AlphaStreamStop`
 - Keymaps in floating window: `q`/`<Esc>` close, `r` restart
-- `vim.api.nvim_list_uis()[1]` can return nil in headless mode — always guard
+- `vim.api.nvim_list_uis()[1]` can return nil in headless mode, always guard
