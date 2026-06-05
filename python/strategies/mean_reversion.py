@@ -1,31 +1,24 @@
-def get_params():
-    return {"lookback": 20, "entry_z": 0.98, "exit_z": 1.02}
+from backtesting import Strategy
+import pandas as pd
 
 
-def run_bar(bar):
-    price = bar["price"]
-    prices = bar["prices"]
-    i = bar["i"]
-    capital = bar["capital"]
-    shares = bar["shares"]
-    position = bar["position"]
+class MeanReversion(Strategy):
+    lookback = 20
+    entry_pct = 0.98
+    exit_pct = 1.02
 
-    lookback = min(i, 20)
-    if lookback < 5:
-        return capital, shares, position
+    def init(self):
+        close = pd.Series(self.data.Close)
+        self.sma = self.I(lambda: close.rolling(self.lookback).mean(), name=f"SMA{self.lookback}")
 
-    mean = sum(prices[i - lookback : i]) / lookback
-    entry_thresh = mean * 0.98
-    exit_thresh = mean * 1.02
-
-    if price < entry_thresh and position == 0:
-        shares = int(capital / price)
-        if shares > 0:
-            capital -= shares * price
-            position = 1
-    elif price > exit_thresh and position == 1 and shares > 0:
-        capital += shares * price
-        shares = 0
-        position = 0
-
-    return capital, shares, position
+    def next(self):
+        price = self.data.Close[-1]
+        mean = self.sma[-1]
+        if pd.isna(mean):
+            return
+        lower = mean * self.entry_pct
+        upper = mean * self.exit_pct
+        if price < lower and not self.position:
+            self.buy(size=0.95)
+        elif price > upper and self.position:
+            self.position.close()

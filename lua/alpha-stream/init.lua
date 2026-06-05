@@ -4,9 +4,7 @@ local job = require("alpha-stream.job")
 local M = {}
 local running = false
 local current_ticker = "SPY"
-local current_strategy = "ma_crossover"
-local current_fast = 50
-local current_slow = 200
+local current_strategy_file = "sma_cross"
 
 local function get_plugin_root()
   local src = debug.getinfo(1, "S").source:match("@?(.*/)")
@@ -23,31 +21,39 @@ local function save_result(data)
   local entry = {
     timestamp = os.date("%Y-%m-%d %H:%M:%S"),
     ticker = current_ticker,
-    strategy = current_strategy,
-    fast_win = current_fast,
-    slow_win = current_slow,
+    strategy_file = current_strategy_file or "",
+    strategy = type(data.strategy) == "string" and data.strategy or "",
     pnl = type(data.pnl) == "number" and data.pnl or 0,
     drawdown = type(data.drawdown) == "number" and data.drawdown or 0,
     sharpe = type(data.sharpe) == "number" and data.sharpe or nil,
     trades = type(data.trades) == "number" and data.trades or 0,
+    return_pct = type(data.return_pct) == "number" and data.return_pct or nil,
+    win_rate = type(data.win_rate) == "number" and data.win_rate or nil,
   }
   local line = vim.json.encode(entry) .. "\n"
-  local fd = vim.fn.writefile({ line }, path, "a")
-  if fd == 0 then
-    vim.notify("alpha-stream: results saved to " .. path, vim.log.levels.INFO)
-  end
+  vim.fn.writefile({ line }, path, "a")
 end
 
 ui.set_restart_callback(function()
   M.restart()
 end)
 
+ui.set_start_callback(function()
+  M.start({ ticker = current_ticker, strategy_file = current_strategy_file })
+end)
+
+ui.set_stop_callback(function()
+  M.stop()
+end)
+
 function M.start(opts)
   opts = opts or {}
   current_ticker = type(opts.ticker) == "string" and opts.ticker or "SPY"
-  current_strategy = type(opts.strategy) == "string" and opts.strategy or "ma_crossover"
-  current_fast = type(opts.fast_ma) == "number" and opts.fast_ma or 50
-  current_slow = type(opts.slow_ma) == "number" and opts.slow_ma or 200
+  if type(opts.strategy_file) == "string" and opts.strategy_file ~= "" then
+    current_strategy_file = opts.strategy_file
+  elseif type(opts.strategy) == "string" and opts.strategy ~= "" then
+    current_strategy_file = opts.strategy
+  end
 
   if running then
     vim.notify("alpha-stream: already running", vim.log.levels.WARN)
@@ -56,7 +62,7 @@ function M.start(opts)
 
   running = true
   ui.set_ticker(current_ticker)
-  ui.set_strategy(current_fast, current_slow, current_strategy)
+  ui.set_strategy_file(current_strategy_file)
   ui.open()
   ui.update_dashboard({
     progress = 0,
@@ -64,17 +70,21 @@ function M.start(opts)
     drawdown = 0,
     portfolio = 10000,
     price = 0,
-    fast_ma = nil,
-    slow_ma = nil,
-    fast_window = current_fast,
-    slow_window = current_slow,
     position = "flat",
     status = "starting",
   })
 
   local root = get_plugin_root()
   local script = root .. "/python/engine.py"
-  local extra_args = { "--ticker", current_ticker, "--strategy", current_strategy, "--fast", tostring(current_fast), "--slow", tostring(current_slow) }
+  local extra_args = { "--ticker", current_ticker }
+  if current_strategy_file then
+    if current_strategy_file:match("%.py$") or current_strategy_file:match("[/\\]") then
+      table.insert(extra_args, "--strategy-file")
+    else
+      table.insert(extra_args, "--strategy")
+    end
+    table.insert(extra_args, current_strategy_file)
+  end
 
   local ok, err = pcall(function()
     local started = job.spawn(script, function(data)
@@ -104,9 +114,26 @@ function M.start(opts)
   if not ok then
     running = false
     ui.show_error(tostring(err))
+    local tb = debug.traceback()
+    io.stderr:write("ALPHA-STREAM PCALL ERROR: " .. tostring(err) .. "\n")
+    io.stderr:write("TRACEBACK: " .. tostring(tb) .. "\n")
+    io.stderr:flush()
     vim.notify("alpha-stream: " .. tostring(err), vim.log.levels.ERROR)
   end
 end
+
+-- debug: test raw spawn
+--[[
+io.stderr:write("DEBUG: testing raw job.spawn...\n")
+local debug_started = job.spawn(
+  script,
+  function(d) io.stderr:write("DEBUG on_line\n") end,
+  function(r) io.stderr:write("DEBUG on_exit\n") end,
+  extra_args
+)
+io.stderr:write("DEBUG spawn result: " .. tostring(debug_started) .. "\n")
+io.stderr:flush()
+--]]
 
 function M.stop()
   job.stop()
@@ -117,7 +144,7 @@ end
 function M.restart()
   M.stop()
   vim.defer_fn(function()
-    M.start({ ticker = current_ticker, strategy = current_strategy, fast_ma = current_fast, slow_ma = current_slow })
+    M.start({ ticker = current_ticker, strategy_file = current_strategy_file })
   end, 150)
 end
 
@@ -132,17 +159,17 @@ function M.log()
   for _, line in ipairs(fd) do
     local ok, entry = pcall(vim.json.decode, line)
     if ok and entry then
-      local log_fast = type(entry.fast_win) == "number" and tostring(entry.fast_win) or "?"
-      local log_slow = type(entry.slow_win) == "number" and tostring(entry.slow_win) or "?"
+      local log_strat = type(entry.strategy) == "string" and entry.strategy or "?"
       local log_pnl = type(entry.pnl) == "number" and string.format("%+.2f", entry.pnl) or "?"
       local log_dd = type(entry.drawdown) == "number" and string.format("%.2f", entry.drawdown) or "?"
       local log_sharpe = type(entry.sharpe) == "number" and string.format("%.2f", entry.sharpe) or "?"
       local log_trades = type(entry.trades) == "number" and tostring(entry.trades) or "?"
+      local log_return = type(entry.return_pct) == "number" and string.format("%.2f%%", entry.return_pct) or "?"
       table.insert(qf, {
         filename = path,
-        text = string.format("[%s] %s MA(%s,%s) PnL=%s DD=%s Sharpe=%s Trades=%s",
-          entry.ticker, entry.timestamp, log_fast, log_slow,
-          log_pnl, log_dd, log_sharpe, log_trades),
+        text = string.format("[%s] %s %s PnL=%s Return=%s DD=%s Sharpe=%s Trades=%s",
+          entry.ticker, entry.timestamp, log_strat,
+          log_pnl, log_return, log_dd, log_sharpe, log_trades),
       })
     end
   end

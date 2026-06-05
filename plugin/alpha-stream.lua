@@ -3,30 +3,48 @@ if vim.g.loaded_alpha_stream then
 end
 vim.g.loaded_alpha_stream = true
 
+local BUILTIN_STRATEGIES = { "sma_cross", "mean_reversion", "rsi_reversal" }
+local TICKERS = { "SPY", "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "BRK.B", "JPM", "V", "JNJ", "WMT", "PG", "MA", "UNH", "HD", "DIS", "NFLX", "KO", "PEP", "BAC", "CRM", "INTC", "AMD", "QQQ", "IWM", "EEM", "GLD", "SLV" }
+
 vim.api.nvim_create_user_command("AlphaStreamRun", function(opts)
   local parts = vim.split(opts.args or "", "%s+")
-  local ticker = parts[1] or "SPY"
-  local strategy = "ma_crossover"
-  local fast = 50
-  local slow = 200
+  local ticker = (parts[1] and parts[1] ~= "") and parts[1] or nil
+  local strategy_file = (parts[2] and parts[2] ~= "") and parts[2] or nil
 
-  if parts[2] then
-    if parts[2]:match("^%d+$") then
-      fast = tonumber(parts[2])
-    else
-      strategy = parts[2]
-      if parts[3] and parts[3]:match("^%d+$") then fast = tonumber(parts[3]) end
-      if parts[4] and parts[4]:match("^%d+$") then slow = tonumber(parts[4]) end
+  local args = {}
+  if ticker then args.ticker = ticker end
+  if strategy_file then args.strategy_file = strategy_file end
+
+  require("alpha-stream").start(args)
+end, {
+  desc = "Run backtest: :AlphaStreamRun [ticker] [strategy-file-or-name]",
+  nargs = "*",
+  complete = function(ArgLead, CmdLine, CursorPos)
+    local args = vim.split(CmdLine, "%s+")
+    local arg_idx = #args
+    if CmdLine:match("%s$") then
+      arg_idx = arg_idx + 1
     end
-  end
-
-  require("alpha-stream").start({
-    ticker = ticker,
-    strategy = strategy,
-    fast_ma = fast,
-    slow_ma = slow,
-  })
-end, { desc = "Start backtest: :AlphaStreamRun [ticker] [strategy] [fast_ma] [slow_ma]", nargs = "*" })
+    local choices
+    if arg_idx == 1 then
+      choices = TICKERS
+    elseif arg_idx == 2 then
+      choices = BUILTIN_STRATEGIES
+    else
+      return {}
+    end
+    if ArgLead == "" then
+      return choices
+    end
+    local result = {}
+    for _, c in ipairs(choices) do
+      if c:lower():find(ArgLead:lower(), 1, true) then
+        table.insert(result, c)
+      end
+    end
+    return result
+  end,
+})
 
 vim.api.nvim_create_user_command("AlphaStreamStop", function()
   require("alpha-stream").stop()
@@ -44,5 +62,5 @@ vim.api.nvim_create_user_command("AlphaStreamEdit", function()
   local src = info.source:match("@?(.*)")
   if not src then return end
   local root = vim.fn.fnamemodify(src, ":p:h:h:h")
-  vim.cmd("edit " .. root .. "/python/engine.py")
-end, { desc = "Open strategy file for editing" })
+  vim.cmd("edit " .. root .. "/python/strategies")
+end, { desc = "Open strategies directory for editing" })
