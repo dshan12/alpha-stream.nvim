@@ -122,6 +122,15 @@ function M.start(opts)
   end
 end
 
+function M.run_current_buffer()
+  local file = vim.api.nvim_buf_get_name(0)
+  if file == "" then
+    vim.notify("alpha-stream: current buffer has no file", vim.log.levels.WARN)
+    return
+  end
+  M.start({ ticker = current_ticker, strategy_file = file })
+end
+
 -- debug: test raw spawn
 --[[
 io.stderr:write("DEBUG: testing raw job.spawn...\n")
@@ -177,5 +186,26 @@ function M.log()
   vim.cmd("copen")
   vim.notify("alpha-stream: showing " .. #qf .. " backtest results", vim.log.levels.INFO)
 end
+
+local augroup = vim.api.nvim_create_augroup("AlphaStreamAutoRestart", { clear = true })
+vim.api.nvim_create_autocmd("BufWritePost", {
+  group = augroup,
+  callback = function()
+    if not running then return end
+    local file = vim.api.nvim_buf_get_name(0)
+    if file == "" then return end
+    local normalized = vim.fn.fnamemodify(file, ":p")
+    local current = vim.fn.fnamemodify(current_strategy_file or "", ":p")
+    if normalized ~= current then return end
+    vim.defer_fn(function()
+      if not running then return end
+      local cur = vim.fn.fnamemodify(current_strategy_file or "", ":p")
+      local now = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":p")
+      if cur == now then
+        pcall(function() M.restart() end)
+      end
+    end, 300)
+  end,
+})
 
 return M

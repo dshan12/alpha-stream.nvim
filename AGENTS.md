@@ -64,6 +64,10 @@ vhs demo.tape
 
 `job.lua` auto-detects `.venv/bin/python3` relative to the plugin root. Falls back to `python3` if not found.
 
+### Auto-restart autocmd uses `fnamemodify(file, ":p")` to normalize paths
+
+Comparing `current_strategy_file` (which may be a relative path like `python/strategies/sma_cross.py`) to `vim.api.nvim_buf_get_name(0)` (which is the absolute path Neovim tracks) requires normalization or they never match. Use `vim.fn.fnamemodify(path, ":p")` on both sides before `==` comparison.
+
 ## Architecture Notes
 
 - Python loads user's .py file via `importlib.util.spec_from_file_location`, finds the `backtesting.Strategy` subclass with `inspect.getmembers`, runs `Backtest(data, cls).run()`, then streams the `_equity_curve` row by row as JSON (one event per bar with 30ms delay for live effect)
@@ -75,6 +79,8 @@ vhs demo.tape
 - Keymaps in floating window: `s` start, `x` stop, `r` restart, `?` help, `q`/`<Esc>` close
 - `vim.api.nvim_list_uis()[1]` can return nil in headless mode, always guard
 - `vim.split("", "%s+")` returns `{""}` (a table with one empty string), not `{}`. Use `(parts[1] and parts[1] ~= "")` not `parts[1] or default` when the arg may be empty
+- Exposes `M.run_current_buffer()` for users to wire up a keybind that uses the current buffer's file path as the strategy file
+- `BufWritePost` autocmd (group `AlphaStreamAutoRestart`) auto-restarts the running backtest when the user saves the current strategy file. Uses 300ms debounce via `vim.defer_fn`. Only fires if a backtest is running and the saved file path matches `current_strategy_file` (path-normalized via `fnamemodify`)
 
 ## Strategy file format
 

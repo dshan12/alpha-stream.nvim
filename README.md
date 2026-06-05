@@ -64,6 +64,19 @@ python3 -m venv .venv
 .venv/bin/pip install -r python/requirements.txt
 ```
 
+### Optional keybinds
+
+The plugin doesn't set any global keymaps by default, but you can wire up your own:
+
+```lua
+-- Run a backtest on the .py file in your current buffer
+vim.keymap.set("n", "<leader>ar", function()
+  require("alpha-stream").run_current_buffer()
+end, { desc = "alpha-stream: run backtest on current file" })
+```
+
+Now editing `momentum.py` and pressing `<leader>ar` runs the backtest on that file with the last-used ticker. No path typing needed.
+
 ### In the dashboard
 
 | Key | Action |
@@ -81,9 +94,11 @@ python3 -m venv .venv
 1. **Run a baseline**: `:AlphaStreamRun SPY sma_cross`
 2. **Try a different strategy**: `:AlphaStreamRun SPY mean_reversion`
 3. **Tweak a strategy**: open `python/strategies/sma_cross.py`, change `fast` or `slow`, save
-4. **Restart in place**: press `r` in the dashboard, no Neovim quit needed
+4. **It restarts itself**: saving the .py file auto-reloads the backtest (300ms debounce)
 5. **Compare runs**: `:AlphaStreamLog` (opens quickfix with all results)
 6. **Write your own**: create `python/strategies/momentum.py`, then `:AlphaStreamRun SPY momentum`
+
+> Save the .py file and the dashboard restarts. No `:r` to press, no Neovim quit. Just edit, save, watch the numbers.
 
 Each run is saved to `~/.local/share/nvim/alpha-stream/results.jsonl` with timestamp, ticker, strategy, and final metrics.
 
