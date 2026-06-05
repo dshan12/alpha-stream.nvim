@@ -137,7 +137,7 @@ local function draw()
   local best_idx = best_by_return()
   if best_idx then
     local b = rows[best_idx]
-    table.insert(lines, "  Best:  " .. b.name .. " (Return)")
+    table.insert(lines, "  Best: " .. b.name .. " (Return)")
   end
 
   table.insert(lines, "")

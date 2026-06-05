@@ -171,7 +171,7 @@ function M.update_dashboard(data)
   if is_starting then
     status_msg = "Initializing backtest..."
   elseif is_done then
-    status_msg = "Complete!  Final: " .. pnl_str
+    status_msg = "Done. Final: " .. pnl_str
   else
     status_msg = "Live backtest running..."
   end
@@ -181,7 +181,7 @@ function M.update_dashboard(data)
   local bar = string.rep("█", filled) .. string.rep("░", bar_len - filled)
 
   local footer
-  if is_starting or (data.status == "running") then
+  if is_starting or data.status == "running" then
     footer = "  [x]stop  [r]restart  [?]help  [q]close"
   elseif is_done then
     footer = "  [r]restart  [?]help  [q]close"

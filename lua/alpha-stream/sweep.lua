@@ -5,7 +5,6 @@ local job = require("alpha-stream.job")
 local buf = nil
 local win = nil
 local ns = vim.api.nvim_create_namespace("alpha-stream-sweep")
-local rerun_cb = nil
 
 local stored_opts = nil
 local stored_on_complete = nil
@@ -61,7 +60,7 @@ local function fmt_param_value(v)
   return tostring(v)
 end
 
-local function params_dict_to_str(params)
+local function format_params(params)
   if type(params) ~= "table" then return "" end
   local parts = {}
   for k, v in pairs(params) do
@@ -129,7 +128,7 @@ local function draw()
   local show_n = math.min(10, #sorted)
   local best_str = "  (none yet)"
   if best_so_far then
-    local ps = params_dict_to_str(best_so_far.params)
+    local ps = format_params(best_so_far.params)
     best_str = "  " .. ps .. "  ->  Sharpe " .. fmt_sharpe(best_so_far.sharpe)
       .. ", " .. fmt_pct(best_so_far.return_pct)
   end
@@ -150,7 +149,7 @@ local function draw()
   else
     for i = 1, show_n do
       local r = sorted[i]
-      local ps = params_dict_to_str(r.params) or ""
+      local ps = format_params(r.params) or ""
       if #ps > 28 then ps = ps:sub(1, 25) .. "..." end
       local line = string.format("  %2d. %-28s  %8s  Sharpe %6s  DD %7s  %d trades",
         i, ps, fmt_pct(r.return_pct), fmt_sharpe(r.sharpe), fmt_dd(r.max_dd), r.trades or 0)
@@ -164,7 +163,7 @@ local function draw()
 
   local failed = completed_combos - #sorted
   if failed > 0 then
-    table.insert(lines, "    " .. failed .. " combo(s) failed")
+    table.insert(lines, "    " .. failed .. " combos failed")
   end
 
   table.insert(lines, "")
@@ -247,11 +246,13 @@ local function setup_window(title)
   vim.keymap.set("n", "<Esc>", function() close_win() end, { buffer = buf, nowait = true, silent = true })
   vim.keymap.set("n", "?", function() show_help() end, { buffer = buf, nowait = true, silent = true })
   vim.keymap.set("n", "r", function()
-    if rerun_cb then pcall(rerun) end
+    if not is_running and stored_opts then
+      M.run(stored_opts, stored_on_complete)
+    end
   end, { buffer = buf, nowait = true, silent = true })
 end
 
-function rerun()
+local function rerun()
   if not stored_opts then return end
   if is_running then return end
   results = {}
@@ -265,7 +266,6 @@ function M.run(opts, on_complete)
   opts = opts or {}
   stored_opts = opts
   stored_on_complete = on_complete
-  rerun_cb = function() rerererun() end
 
   results = {}
   best_so_far = nil

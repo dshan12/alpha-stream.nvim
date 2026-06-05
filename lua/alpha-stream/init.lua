@@ -114,10 +114,6 @@ function M.start(opts)
   if not ok then
     running = false
     ui.show_error(tostring(err))
-    local tb = debug.traceback()
-    io.stderr:write("ALPHA-STREAM PCALL ERROR: " .. tostring(err) .. "\n")
-    io.stderr:write("TRACEBACK: " .. tostring(tb) .. "\n")
-    io.stderr:flush()
     vim.notify("alpha-stream: " .. tostring(err), vim.log.levels.ERROR)
   end
 end
@@ -130,19 +126,6 @@ function M.run_current_buffer()
   end
   M.start({ ticker = current_ticker, strategy_file = file })
 end
-
--- debug: test raw spawn
---[[
-io.stderr:write("DEBUG: testing raw job.spawn...\n")
-local debug_started = job.spawn(
-  script,
-  function(d) io.stderr:write("DEBUG on_line\n") end,
-  function(r) io.stderr:write("DEBUG on_exit\n") end,
-  extra_args
-)
-io.stderr:write("DEBUG spawn result: " .. tostring(debug_started) .. "\n")
-io.stderr:flush()
---]]
 
 function M.stop()
   job.stop()

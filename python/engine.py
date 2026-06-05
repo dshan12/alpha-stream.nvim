@@ -168,7 +168,7 @@ def parse_sweep_params(raw):
     return grid
 
 
-def summarize_stats(stats, equity, trades, args):
+def summarize_stats(stats, args):
     final_eq = clean(stats.get("Equity Final [$]"))
     return {
         "return_pct": clean(round(float(stats.get("Return [%]", 0.0) or 0.0), 2)),
@@ -211,7 +211,6 @@ def run_single(args, data, strategy_class, strategy_path):
     time.sleep(STREAM_DELAY)
 
     max_dd = 0.0
-    peak = float(args.cash)
 
     for i in range(total_bars):
         eq_row = equity.iloc[i]
@@ -225,7 +224,6 @@ def run_single(args, data, strategy_class, strategy_path):
         dd_pct = float(dd) * 100.0
         if dd_pct < max_dd:
             max_dd = dd_pct
-        peak = max(peak, equity_val)
         trade_count = int((trades["EntryBar"] <= i).sum()) if trades is not None and not trades.empty else 0
         position = "long" if is_position_open(trades, i) else "flat"
 
@@ -247,14 +245,14 @@ def run_single(args, data, strategy_class, strategy_path):
             event[k] = clean(v)
 
         if event["status"] == "done":
-            summary = summarize_stats(stats, equity, trades, args)
+            summary = summarize_stats(stats, args)
             event.update(summary)
 
         emit(event)
         time.sleep(STREAM_DELAY)
 
 
-def run_sweep(args, data, strategy_class, strategy_path, plugin_root):
+def run_sweep(args, data, strategy_class, strategy_path):
     param_attrs = detect_param_attrs(strategy_class)
     grid = parse_sweep_params(args.param)
 
@@ -304,7 +302,7 @@ def run_sweep(args, data, strategy_class, strategy_path, plugin_root):
             time.sleep(STREAM_DELAY)
             continue
 
-        summary = summarize_stats(stats, stats["_equity_curve"], stats.get("_trades", pd.DataFrame()), args)
+        summary = summarize_stats(stats, args)
         record = {
             "params": {k: clean(v) for k, v in param_dict.items()},
             **summary,
@@ -369,7 +367,7 @@ def run_compare(args, data, plugin_root):
         try:
             bt = Backtest(data, cls, cash=args.cash, commission=args.commission, finalize_trades=True)
             stats = bt.run()
-            summary = summarize_stats(stats, stats["_equity_curve"], stats.get("_trades", pd.DataFrame()), args)
+            summary = summarize_stats(stats, args)
         except Exception as e:
             emit({
                 "status": "running",
@@ -445,7 +443,7 @@ def run_backtest():
         elif args.mode == "sweep":
             strategy_path = resolve_strategy_file(args.strategy_file or args.strategy, plugin_root)
             strategy_class = load_strategy_class(strategy_path)
-            run_sweep(args, data, strategy_class, strategy_path, plugin_root)
+            run_sweep(args, data, strategy_class, strategy_path)
         elif args.mode == "compare":
             run_compare(args, data, plugin_root)
     except FileNotFoundError as e:

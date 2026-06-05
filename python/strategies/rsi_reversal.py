@@ -1,5 +1,4 @@
 from backtesting import Strategy
-from backtesting.test import SMA
 import pandas as pd
 
 
