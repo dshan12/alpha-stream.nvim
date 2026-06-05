@@ -5,7 +5,7 @@
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python)
 ![License: MIT](https://img.shields.io/badge/license-MIT-yellow?style=flat-square)
 
-![demo](https://github.com/dshan12/alpha-stream.nvim/blob/master/demo.gif)
+<!--![demo](https://github.com/dshan12/alpha-stream.nvim/blob/master/demo.gif)-->
 
 Every time I wanted to test a trading idea, I had to leave my editor, run a Python script, wait for it to finish, switch back to Neovim, look at the numbers, make a change, and repeat. That got old fast.
 
@@ -270,7 +270,6 @@ The Lua side has a few sharp edges:
 - Window doesn't exist in headless mode (guard every `nvim_list_uis()` call)
 - `vim.system()` looks like the right tool but its `SystemObj` has no streaming API (`jobstart` with `on_stdout` is the way to go)
 
-These are all documented in `AGENTS.md` so I don't trip over them again.
 
 ---
 
