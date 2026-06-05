@@ -13,9 +13,11 @@ Implemented Neovim plugin (alpha-stream.nvim): live-streaming financial backtest
 ## Directory Structure
 
 ```
-plugin/alpha-stream.lua       # Registers :AlphaStreamRun [ticker] [strategy]
-lua/alpha-stream/init.lua     # Entry point, wires job → UI
-lua/alpha-stream/ui.lua       # Floating window (dashboard, keymaps, extmarks)
+plugin/alpha-stream.lua       # Registers :AlphaStreamRun / :AlphaStreamSweep / :AlphaStreamCompare [ticker] [strategy]
+lua/alpha-stream/init.lua     # Entry point, wires job → UI for single mode
+lua/alpha-stream/ui.lua       # Floating window (dashboard, keymaps, extmarks) for single mode
+lua/alpha-stream/sweep.lua    # Floating window for parameter sweep mode
+lua/alpha-stream/compare.lua  # Floating window for strategy comparison mode
 lua/alpha-stream/job.lua      # Spawns Python via vim.fn.jobstart() with on_stdout
 python/engine.py              # Loads .py strategy, runs backtesting.Backtest, streams equity curve
 python/strategies/sma_cross.py       # Built-in: MA crossover
@@ -75,12 +77,16 @@ Comparing `current_strategy_file` (which may be a relative path like `python/str
 - Final event has `status: "done"` and adds `sharpe`, `return_pct`, `win_rate`, `equity_final`
 - Lua spawns via `vim.fn.jobstart()` with `on_stdout` callback, parses with `vim.json.decode()`
 - UI updates wrapped in `vim.schedule()` (Neovim is single-threaded)
-- Commands: `:AlphaStreamRun [TICKER] [STRATEGY-FILE]`, `:AlphaStreamStop`, `:AlphaStreamLog`, `:AlphaStreamEdit`
+- Commands: `:AlphaStreamRun [TICKER] [STRATEGY-FILE]`, `:AlphaStreamSweep TICKER STRATEGY param=v1,v2 [...]`, `:AlphaStreamCompare TICKER STRAT1 STRAT2 [...]`, `:AlphaStreamStop`, `:AlphaStreamLog`, `:AlphaStreamEdit`
 - Keymaps in floating window: `s` start, `x` stop, `r` restart, `?` help, `q`/`<Esc>` close
+- The three modules (ui/sweep/compare) own their own buf+win+ns. Each registers with its own `vim.api.nvim_create_namespace("alpha-stream-{name}")`, never share namespaces across modules
+- Sweep/compare modules are self-contained: they each call `job.spawn()` directly with their own `--mode`. They don't go through `init.lua`
+- `setup_window()` in sweep/compare must early-return on `if not ui_state then return end` to handle headless Neovim (where `nvim_list_uis()[1]` is nil)
 - `vim.api.nvim_list_uis()[1]` can return nil in headless mode, always guard
 - `vim.split("", "%s+")` returns `{""}` (a table with one empty string), not `{}`. Use `(parts[1] and parts[1] ~= "")` not `parts[1] or default` when the arg may be empty
 - Exposes `M.run_current_buffer()` for users to wire up a keybind that uses the current buffer's file path as the strategy file
 - `BufWritePost` autocmd (group `AlphaStreamAutoRestart`) auto-restarts the running backtest when the user saves the current strategy file. Uses 300ms debounce via `vim.defer_fn`. Only fires if a backtest is running and the saved file path matches `current_strategy_file` (path-normalized via `fnamemodify`)
+- Engine has three modes: `single` (default, streams per-bar), `sweep` (loops `itertools.product` of a param grid, streams per-combo + best), `compare` (runs N strategies sequentially on shared data, streams per-strategy). All three share `summarize_stats()` and `clean()` (NaN/Inf → None)
 
 ## Strategy file format
 

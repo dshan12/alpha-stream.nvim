@@ -23,6 +23,8 @@ Under the hood it uses [backtesting.py](https://github.com/kernc/backtesting.py)
 | Pick a ticker | `:AlphaStreamRun AAPL` |
 | Pick a strategy | `:AlphaStreamRun SPY mean_reversion` |
 | Use your own file | `:AlphaStreamRun TSLA ~/code/my_strat.py` |
+| Sweep parameters | `:AlphaStreamSweep SPY sma_cross fast=10,20 slow=100,200` |
+| Compare strategies | `:AlphaStreamCompare AAPL sma_cross mean_reversion rsi_reversal` |
 | Results log | `:AlphaStreamLog` |
 | Open strategies | `:AlphaStreamEdit` |
 
@@ -101,6 +103,34 @@ Now editing `momentum.py` and pressing `<leader>ar` runs the backtest on that fi
 > Save the .py file and the dashboard restarts. No `:r` to press, no Neovim quit. Just edit, save, watch the numbers.
 
 Each run is saved to `~/.local/share/nvim/alpha-stream/results.jsonl` with timestamp, ticker, strategy, and final metrics.
+
+---
+
+## Sweep & Compare
+
+Hand-tuning `fast=50` to `fast=20` and rerunning gets old. The engine has two extra modes that do the grid for you.
+
+### Parameter sweep
+
+`:AlphaStreamSweep` runs every combination in a parameter grid, sorts by Sharpe, and shows the top results in a floating table.
+
+```vim
+:AlphaStreamSweep SPY sma_cross fast=10,20,50,100 slow=100,200,300
+```
+
+That's 12 backtests, all in one go. The dashboard shows progress, the best combo so far, and a live top-10 table. Press `r` to rerun, `q` to close.
+
+### Strategy comparison
+
+`:AlphaStreamCompare` runs multiple strategies on the same ticker and lays them out side by side.
+
+```vim
+:AlphaStreamCompare AAPL sma_cross mean_reversion rsi_reversal
+```
+
+The compare view is a table: one row per strategy, columns for Return, Sharpe, Max DD, Win%, Trades, and Final $. The best by Return is highlighted.
+
+Both commands accept the same `TICKER` and strategy names as `:AlphaStreamRun`. Sweep takes one or more `name=v1,v2,v3` params. Compare takes two or more strategy names.
 
 ---
 
@@ -195,7 +225,8 @@ That's the whole loop. Make it short, make it test in 5 seconds, iterate on what
 │  • yfinance downloads OHLCV data                        │
 │  • Loads your .py file, finds Strategy subclass         │
 │  • Runs backtesting.Backtest(data, YourStrategy).run()  │
-│  • Streams _equity_curve as JSON lines to stdout        │
+│  • Three modes: single, sweep, compare                  │
+│  • Streams events as JSON lines to stdout               │
 └──────────────────────────────────┬──────────────────────┘
                                    │
                                    ▼
@@ -208,10 +239,10 @@ That's the whole loop. Make it short, make it test in 5 seconds, iterate on what
                                    │
                                    ▼
 ┌─────────────────────────────────────────────────────────┐
-│  Floating window (lua/alpha-stream/ui.lua)              │
+│  Floating windows (lua/alpha-stream/{ui,sweep,compare}) │
 │  • nvim_open_win() with relative='editor'              │
-│  • nvim_buf_add_highlight() for PnL/DD/position         │
-│  • Live progress bar, dynamic keymap hints in footer    │
+│  • nvim_buf_add_highlight() for highlights              │
+│  • Live progress, dynamic keymap hints in footer        │
 └─────────────────────────────────────────────────────────┘
 ```
 
